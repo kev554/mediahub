@@ -11,7 +11,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -44,9 +44,10 @@ from app.services.media_service import (
 )
 
 from app.services.media_storage import (
-    ORIGINALS_DIR,
-    THUMBNAILS_DIR,
+    TEMP_DIR,
+    delete_from_r2,
     generate_storage_filename,
+    upload_to_r2,
 )
 
 
@@ -156,10 +157,14 @@ async def upload_media(
         extension
     )
 
-    destination = ORIGINALS_DIR / stored_filename
+    # --------------------------------------------------------
+    # Fichier temporaire local
+    # --------------------------------------------------------
+
+    destination = TEMP_DIR / stored_filename
 
     # --------------------------------------------------------
-    # Upload par morceaux
+    # Upload par morceaux vers fichier temporaire
     # --------------------------------------------------------
 
     total_size = 0
@@ -256,7 +261,7 @@ async def upload_media(
     )
 
     thumbnail_path = (
-        THUMBNAILS_DIR
+        TEMP_DIR
         / thumbnail_filename
     )
 
@@ -281,6 +286,85 @@ async def upload_media(
         thumbnail_path = None
 
     # --------------------------------------------------------
+    # Upload original vers R2
+    # --------------------------------------------------------
+
+    original_key = (
+        f"originals/{stored_filename}"
+    )
+
+    try:
+        upload_to_r2(
+            local_path=destination,
+            object_key=original_key,
+            content_type=file.content_type,
+        )
+
+    except Exception as exc:
+        destination.unlink(
+            missing_ok=True
+        )
+
+        if thumbnail_path:
+            thumbnail_path.unlink(
+                missing_ok=True
+            )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to upload media to storage.",
+        ) from exc
+
+    # --------------------------------------------------------
+    # Upload miniature vers R2
+    # --------------------------------------------------------
+
+    thumbnail_key = None
+
+    if thumbnail_path:
+        thumbnail_key = (
+            f"thumbnails/{thumbnail_filename}"
+        )
+
+        try:
+            upload_to_r2(
+                local_path=thumbnail_path,
+                object_key=thumbnail_key,
+                content_type="image/webp",
+            )
+
+        except Exception as exc:
+            delete_from_r2(
+                original_key
+            )
+
+            destination.unlink(
+                missing_ok=True
+            )
+
+            thumbnail_path.unlink(
+                missing_ok=True
+            )
+
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to upload thumbnail to storage.",
+            ) from exc
+
+    # --------------------------------------------------------
+    # Nettoyage des fichiers temporaires
+    # --------------------------------------------------------
+
+    destination.unlink(
+        missing_ok=True
+    )
+
+    if thumbnail_path:
+        thumbnail_path.unlink(
+            missing_ok=True
+        )
+
+    # --------------------------------------------------------
     # Création objet Media
     # --------------------------------------------------------
 
@@ -289,12 +373,13 @@ async def upload_media(
         original_name=file.filename,
         media_type=media_type,
         mime_type=file.content_type,
-        file_path=str(destination),
-        thumbnail_path=(
-            str(thumbnail_path)
-            if thumbnail_path
-            else None
-        ),
+
+        # IMPORTANT :
+        # On stocke maintenant les clés R2
+        # et non plus les chemins Linux.
+        file_path=original_key,
+        thumbnail_path=thumbnail_key,
+
         file_size=total_size,
         width=width,
         height=height,
@@ -313,8 +398,14 @@ async def upload_media(
     db.commit()
     db.refresh(media)
 
-    return media
+    # --------------------------------------------------------
+    # URLs publiques via l'API MediaHub
+    # --------------------------------------------------------
 
+    media.thumbnail_url = f"/api/media/{media.id}/thumbnail"
+    media.file_url = f"/api/media/{media.id}/file"
+
+    return media
 
 # ============================================================
 # LIST MEDIA
@@ -660,29 +751,21 @@ def delete_multiple_media(
     for media in media_items:
 
         # ----------------------------------------------------
-        # Original
+        # Original R2
         # ----------------------------------------------------
 
         if media.file_path:
-            file_path = Path(
+            delete_from_r2(
                 media.file_path
             )
 
-            file_path.unlink(
-                missing_ok=True
-            )
-
         # ----------------------------------------------------
-        # Miniature
+        # Miniature R2
         # ----------------------------------------------------
 
         if media.thumbnail_path:
-            thumbnail_path = Path(
+            delete_from_r2(
                 media.thumbnail_path
-            )
-
-            thumbnail_path.unlink(
-                missing_ok=True
             )
 
         # ----------------------------------------------------
@@ -1046,18 +1129,21 @@ def get_thumbnail(
             detail="Thumbnail not available.",
         )
 
-    thumbnail = Path(
-        media.thumbnail_path
-    )
+    try:
+        from app.services.media_storage import download_from_r2
 
-    if not thumbnail.is_file():
+        thumbnail_data = download_from_r2(
+            media.thumbnail_path
+        )
+
+    except Exception as exc:
         raise HTTPException(
             status_code=404,
             detail="Thumbnail file not found.",
-        )
+        ) from exc
 
-    return FileResponse(
-        path=thumbnail,
+    return StreamingResponse(
+        iter([thumbnail_data]),
         media_type="image/webp",
     )
 
@@ -1082,32 +1168,33 @@ def get_media_file(
         db=db,
     )
 
-    # --------------------------------------------------------
-    # IMPORTANT :
-    # Vérifier que le média existe et est accessible
-    # avant d'utiliser media.file_path.
-    # --------------------------------------------------------
-
     if not media:
         raise HTTPException(
             status_code=404,
             detail="Media not found.",
         )
 
-    file_path = Path(
-        media.file_path
-    )
+    try:
+        from app.services.media_storage import download_from_r2
 
-    if not file_path.is_file():
+        file_data = download_from_r2(
+            media.file_path
+        )
+
+    except Exception as exc:
         raise HTTPException(
             status_code=404,
             detail="Media file not found.",
-        )
+        ) from exc
 
-    return FileResponse(
-        path=file_path,
+    return StreamingResponse(
+        iter([file_data]),
         media_type=media.mime_type,
-        filename=media.original_name,
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{media.original_name}"'
+            )
+        },
     )
 
 
@@ -1601,29 +1688,21 @@ def delete_media(
         )
 
     # --------------------------------------------------------
-    # Supprimer le fichier original
+    # Supprimer le fichier original de R2
     # --------------------------------------------------------
 
     if media.file_path:
-        file_path = Path(
+        delete_from_r2(
             media.file_path
         )
 
-        file_path.unlink(
-            missing_ok=True
-        )
-
     # --------------------------------------------------------
-    # Supprimer la miniature
+    # Supprimer la miniature de R2
     # --------------------------------------------------------
 
     if media.thumbnail_path:
-        thumbnail_path = Path(
+        delete_from_r2(
             media.thumbnail_path
-        )
-
-        thumbnail_path.unlink(
-            missing_ok=True
         )
 
     # --------------------------------------------------------

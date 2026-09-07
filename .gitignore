@@ -78,3 +78,7 @@ Thumbs.db
 # ------------------------------------------------------------
 *.tmp
 *.temp
+
+# MediaHub local tests
+backend/test_upload.jpg
+backend/test_r2.py
