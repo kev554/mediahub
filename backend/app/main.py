@@ -35,7 +35,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
+        "mediahub-cqm.pages.dev",
     ],
     allow_credentials=True,
     allow_methods=["*"],
