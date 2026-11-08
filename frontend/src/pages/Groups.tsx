@@ -17,6 +17,7 @@ import {
   updateGroup,
   addGroupMember,
   removeGroupMember,
+  updateGroupMemberRole,
 } from '../services/groups'
 
 import {
@@ -25,6 +26,7 @@ import {
 } from '../services/users'
 
 import { useAuth } from '../hooks/useAuth'
+import { t } from '../lib/i18n'
 
 export function Groups() {
   const { user } = useAuth()
@@ -67,6 +69,12 @@ export function Groups() {
 
   const [addingMember, setAddingMember] =
     useState(false)
+
+  const [newMemberRole, setNewMemberRole] =
+    useState<'manager' | 'viewer'>('viewer')
+
+  const [updatingMemberRole, setUpdatingMemberRole] =
+    useState<number | null>(null)
 
   async function loadGroups() {
     try {
@@ -296,6 +304,7 @@ export function Groups() {
       await addGroupMember(
         selectedGroup.id,
         selectedUser.id,
+        newMemberRole,
       )
 
       setMemberSearch('')
@@ -312,6 +321,36 @@ export function Groups() {
       )
     } finally {
       setAddingMember(false)
+    }
+  }
+
+  async function handleChangeMemberRole(
+    memberId: number,
+    role: 'manager' | 'viewer',
+  ) {
+    if (!selectedGroup) {
+      return
+    }
+
+    try {
+      setUpdatingMemberRole(memberId)
+      setError(null)
+
+      await updateGroupMemberRole(
+        selectedGroup.id,
+        memberId,
+        role,
+      )
+
+      await openGroup(selectedGroup.id)
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Impossible de modifier le rôle.',
+      )
+    } finally {
+      setUpdatingMemberRole(null)
     }
   }
 
@@ -366,7 +405,7 @@ export function Groups() {
 
   if (loading) {
     return (
-      <section className="page-section">
+      <section className="page-section groups-page">
         <div className="glass groups-loading">
           Chargement des groupes...
         </div>
@@ -374,19 +413,26 @@ export function Groups() {
     )
   }
 
+  const canManageSelectedGroup =
+    selectedGroup?.members.some(
+      (member) =>
+        member.id === user?.id &&
+        (member.role === 'owner' ||
+          member.role === 'manager'),
+    ) ?? false
+
   return (
-    <section className="page-section">
+    <section className="page-section groups-page">
       <div className="page-header">
         <div>
           <span className="dashboard-eyebrow">
             MEDIAHUB
           </span>
 
-          <h1>Groupes</h1>
+          <h1>{t('Groupes', 'Groups')}</h1>
 
           <p className="text-secondary">
-            Partage tes photos et vidéos avec
-            les personnes de tes groupes.
+            {t('Partage tes photos et vidéos avec les personnes de tes groupes.', 'Share your photos and videos with people in your groups.')}
           </p>
         </div>
 
@@ -397,7 +443,7 @@ export function Groups() {
             setShowCreate(true)
           }
         >
-          + Nouveau groupe
+          + {t('Nouveau groupe', 'New group')}
         </button>
       </div>
 
@@ -413,11 +459,10 @@ export function Groups() {
             👥
           </div>
 
-          <h2>Aucun groupe</h2>
+          <h2>{t('Aucun groupe', 'No groups')}</h2>
 
           <p className="text-secondary">
-            Crée ton premier groupe pour
-            commencer à partager tes médias.
+            {t('Crée ton premier groupe pour commencer à partager tes médias.', 'Create your first group to start sharing media.')}
           </p>
 
           <button
@@ -427,7 +472,7 @@ export function Groups() {
               setShowCreate(true)
             }
           >
-            Créer un groupe
+            {t('Créer un groupe', 'Create group')}
           </button>
         </div>
       ) : (
@@ -463,7 +508,7 @@ export function Groups() {
 
                   <small>
                     {group.member_count}{' '}
-                    membre
+                    {t('membre', 'member')}
                     {group.member_count !== 1
                       ? 's'
                       : ''}
@@ -478,7 +523,7 @@ export function Groups() {
               <div className="group-detail-header">
                 <div>
                   <span className="dashboard-eyebrow">
-                    GROUPE
+                    {t('GROUPE', 'GROUP')}
                   </span>
 
                   <input
@@ -493,8 +538,7 @@ export function Groups() {
                       })
                     }
                     disabled={
-                      selectedGroup.owner_id !==
-                      user?.id
+                      !canManageSelectedGroup
                     }
                   />
                 </div>
@@ -506,7 +550,7 @@ export function Groups() {
                   selectedGroup.description ??
                   ''
                 }
-                placeholder="Description du groupe..."
+                placeholder={t('Description du groupe…', 'Group description…')}
                 onChange={(event) =>
                   setSelectedGroup({
                     ...selectedGroup,
@@ -515,15 +559,14 @@ export function Groups() {
                   })
                 }
                 disabled={
-                  selectedGroup.owner_id !==
-                  user?.id
+                  !canManageSelectedGroup
                 }
               />
 
               <div className="group-members">
                 <div className="group-members-header">
                   <h3>
-                    Membres (
+                    {t('Membres', 'Members')} (
                     {
                       selectedGroup.members
                         .length
@@ -534,7 +577,7 @@ export function Groups() {
                   {selectedGroup.owner_id ===
                     user?.id && (
                     <span className="group-owner-badge">
-                      Propriétaire
+                      {t('Propriétaire', 'Owner')}
                     </span>
                   )}
                 </div>
@@ -542,9 +585,32 @@ export function Groups() {
                 {selectedGroup.owner_id ===
                   user?.id && (
                   <div className="group-add-member">
+                    <label>
+                      {t('Rôle du nouveau membre', 'New member role')}
+                      <select
+                        className="glass-input"
+                        value={newMemberRole}
+                        onChange={(event) =>
+                          setNewMemberRole(
+                            event.target.value as
+                              | 'manager'
+                              | 'viewer',
+                          )
+                        }
+                        disabled={addingMember}
+                      >
+                        <option value="viewer">
+                          {t('Viewer — lecture seule', 'Viewer — read only')}
+                        </option>
+                        <option value="manager">
+                          {t('Manager — organiser le groupe', 'Manager — organize the group')}
+                        </option>
+                      </select>
+                    </label>
+
                     <input
                       className="glass-input"
-                      placeholder="Rechercher un utilisateur..."
+                      placeholder={t('Rechercher un utilisateur…', 'Search for a user…')}
                       value={memberSearch}
                       onChange={(event) =>
                         void handleSearchUsers(
@@ -558,7 +624,7 @@ export function Groups() {
 
                     {searchingUsers && (
                       <div className="text-secondary">
-                        Recherche...
+                        {t('Recherche…', 'Searching…')}
                       </div>
                     )}
 
@@ -615,8 +681,7 @@ export function Groups() {
                       userResults.length ===
                         0 && (
                         <div className="text-secondary">
-                          Aucun utilisateur
-                          trouvé.
+                          {t('Aucun utilisateur trouvé.', 'No users found.')}
                         </div>
                       )}
                   </div>
@@ -649,7 +714,15 @@ export function Groups() {
                       {member.role ===
                         'owner' && (
                         <span className="group-owner-badge">
-                          Propriétaire
+                          {t('Propriétaire', 'Owner')}
+                        </span>
+                      )}
+
+                      {member.role !== 'owner' && (
+                        <span className="text-secondary">
+                          {member.role === 'manager'
+                            ? 'Manager'
+                            : 'Viewer'}
                         </span>
                       )}
 
@@ -657,6 +730,30 @@ export function Groups() {
                         user?.id &&
                         member.id !==
                           selectedGroup.owner_id && (
+                          <>
+                          <select
+                            className="glass-input"
+                            aria-label={`Rôle de ${member.display_name}`}
+                            value={member.role}
+                            disabled={
+                              updatingMemberRole === member.id
+                            }
+                            onChange={(event) =>
+                              void handleChangeMemberRole(
+                                member.id,
+                                event.target.value as
+                                  | 'manager'
+                                  | 'viewer',
+                              )
+                            }
+                          >
+                            <option value="viewer">
+                              Viewer
+                            </option>
+                            <option value="manager">
+                              Manager
+                            </option>
+                          </select>
                           <button
                             type="button"
                             className="glass-button danger"
@@ -666,8 +763,9 @@ export function Groups() {
                               )
                             }
                           >
-                            Retirer
+                            {t('Retirer', 'Remove')}
                           </button>
+                          </>
                         )}
                     </div>
                   ),
@@ -675,8 +773,7 @@ export function Groups() {
               </div>
 
               <div className="group-actions">
-                {selectedGroup.owner_id ===
-                user?.id ? (
+                {canManageSelectedGroup ? (
                   <>
                     <button
                       type="button"
@@ -687,19 +784,22 @@ export function Groups() {
                       }
                     >
                       {saving
-                        ? 'Enregistrement...'
-                        : 'Enregistrer'}
+                        ? t('Enregistrement…', 'Saving…')
+                        : t('Enregistrer', 'Save')}
                     </button>
 
-                    <button
-                      type="button"
-                      className="glass-button danger"
-                      onClick={() =>
-                        void handleDelete()
-                      }
-                    >
-                      Supprimer
-                    </button>
+                    {selectedGroup.owner_id ===
+                      user?.id && (
+                      <button
+                        type="button"
+                        className="glass-button danger"
+                        onClick={() =>
+                          void handleDelete()
+                        }
+                      >
+                        {t('Supprimer', 'Delete')}
+                      </button>
+                    )}
                   </>
                 ) : (
                   <button
@@ -709,7 +809,7 @@ export function Groups() {
                       void handleLeave()
                     }
                   >
-                    Quitter
+                    {t('Quitter', 'Leave')}
                   </button>
                 )}
               </div>
@@ -737,11 +837,11 @@ export function Groups() {
               👥
             </div>
 
-            <h2>Nouveau groupe</h2>
+            <h2>{t('Nouveau groupe', 'New group')}</h2>
 
             <input
               className="glass-input"
-              placeholder="Nom du groupe"
+              placeholder={t('Nom du groupe', 'Group name')}
               value={name}
               onChange={(event) =>
                 setName(event.target.value)
@@ -750,7 +850,7 @@ export function Groups() {
 
             <textarea
               className="glass-input"
-              placeholder="Description (facultative)"
+              placeholder={t('Description (facultative)', 'Description (optional)')}
               value={description}
               onChange={(event) =>
                 setDescription(
@@ -767,7 +867,7 @@ export function Groups() {
                   setShowCreate(false)
                 }
               >
-                Annuler
+                {t('Annuler', 'Cancel')}
               </button>
 
               <button
@@ -779,8 +879,8 @@ export function Groups() {
                 }
               >
                 {creating
-                  ? 'Création...'
-                  : 'Créer le groupe'}
+                  ? t('Création…', 'Creating…')
+                  : t('Créer le groupe', 'Create group')}
               </button>
             </div>
           </div>

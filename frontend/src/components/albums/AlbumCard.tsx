@@ -1,4 +1,5 @@
 import type { Album } from '../../types/album'
+import { t } from '../../lib/i18n'
 
 
 type AlbumCardProps = {
@@ -32,8 +33,8 @@ export function AlbumCard({
 
           {
             album.visibility === 'group'
-            ? '👥 Groupe'
-            : '🔒 Privé'
+            ? `👥 ${t('Groupe', 'Group')}`
+            : `🔒 ${t('Privé', 'Private')}`
           }
 
         </span>
@@ -64,7 +65,7 @@ export function AlbumCard({
 
           {
             album.description ||
-            'Aucune description'
+            t('Aucune description', 'No description')
           }
 
         </p>
@@ -76,12 +77,11 @@ export function AlbumCard({
 
           <span>
 
-            {album.media_count ?? 0} média
-            {
-              (album.media_count ?? 0) > 1
-              ? 's'
-              : ''
-            }
+            {(album.media_count ?? 0)}{' '}
+            {t(
+              (album.media_count ?? 0) === 1 ? 'média' : 'médias',
+              (album.media_count ?? 0) === 1 ? 'item' : 'items',
+            )}
 
           </span>
 
@@ -99,7 +99,7 @@ export function AlbumCard({
             }}
           >
 
-            Supprimer
+            {t('Supprimer', 'Delete')}
 
           </button>
 

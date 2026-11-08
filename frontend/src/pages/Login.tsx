@@ -49,72 +49,67 @@ export function Login({
   }
 
   return (
-    <section className="page-section">
-      <h1>Connexion</h1>
+    <main className="auth-page">
+      <section className="auth-card glass">
+        <div className="brand-mark" aria-hidden="true">M</div>
+        <span className="dashboard-eyebrow">MEDIAHUB</span>
+        <h1>Sign in</h1>
+        <p className="text-secondary">
+          Sign in to your personal media library.
+        </p>
 
-      <p className="text-secondary">
-        Connecte-toi à ton espace MediaHub.
-      </p>
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <label htmlFor="login-username">Username</label>
+          <input
+            id="login-username"
+            className="glass-input"
+            type="text"
+            placeholder="Username"
+            autoComplete="username"
+            value={username}
+            onChange={(event) =>
+              setUsername(event.target.value)
+            }
+            required
+          />
 
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          maxWidth: '420px',
-          marginTop: '24px',
-        }}
-      >
-        <input
-          type="text"
-          placeholder="Nom d'utilisateur"
-          value={username}
-          onChange={(event) =>
-            setUsername(event.target.value)
-          }
-          required
-        />
+          <label htmlFor="login-password">Password</label>
+          <input
+            id="login-password"
+            className="glass-input"
+            type="password"
+            placeholder="Password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) =>
+              setPassword(event.target.value)
+            }
+            required
+          />
 
-        <input
-          type="password"
-          placeholder="Mot de passe"
-          value={password}
-          onChange={(event) =>
-            setPassword(event.target.value)
-          }
-          required
-          style={{ marginTop: '12px' }}
-        />
+          {error && (
+            <p className="auth-error" role="alert">
+              {error}
+            </p>
+          )}
 
-        {error && (
-          <p
-            style={{
-              marginTop: '12px',
-              color: '#e63946',
-            }}
+          <button
+            type="submit"
+            className="accent-button"
+            disabled={loading}
           >
-            {error}
-          </p>
-        )}
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
 
         <button
-          type="submit"
-          className="accent-button"
-          disabled={loading}
-          style={{ marginTop: '18px' }}
+          type="button"
+          className="glass-button auth-register"
+          onClick={onRegister}
         >
-          {loading
-            ? 'Connexion...'
-            : 'Se connecter'}
+          Create account
         </button>
-      </form>
-
-      <button
-        type="button"
-        className="glass-button"
-        onClick={onRegister}
-        style={{ marginTop: '12px' }}
-      >
-        Créer un compte
-      </button>
-    </section>
+      </section>
+    </main>
   )
 }

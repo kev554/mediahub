@@ -186,7 +186,7 @@ export function RecentMedia({
 
 
           <h2>
-            Timeline récente
+            Albums intelligents
           </h2>
 
         </div>
@@ -196,7 +196,7 @@ export function RecentMedia({
           type="button"
           className="glass-button small-button"
           onClick={() =>
-            onNavigate('timeline')
+            onNavigate('smart-albums')
           }
         >
           Voir tout

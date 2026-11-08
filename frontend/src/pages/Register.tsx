@@ -24,11 +24,14 @@ export function Register({
   const [loading, setLoading] =
     useState(false)
 
+  const [confirmPassword, setConfirmPassword] =
+    useState('')
+
   const [error, setError] =
     useState<string | null>(null)
 
   const updateField = (
-    field: keyof RegisterData,
+    field: 'username' | 'email' | 'password' | 'display_name',
     value: string,
   ) => {
     setForm((current) => ({
@@ -43,6 +46,10 @@ export function Register({
     event.preventDefault()
 
     setError(null)
+    if (form.password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
     setLoading(true)
 
     try {
@@ -59,107 +66,110 @@ export function Register({
   }
 
   return (
-    <section className="page-section">
-      <h1>Créer un compte</h1>
+    <main className="auth-page">
+      <section className="auth-card glass">
+        <div className="brand-mark" aria-hidden="true">M</div>
+        <span className="dashboard-eyebrow">MEDIAHUB</span>
+        <h1>Create account</h1>
 
-      <p className="text-secondary">
-        Crée ton espace personnel MediaHub.
-      </p>
+        <p className="text-secondary">
+          Create your personal media library.
+        </p>
 
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          maxWidth: '420px',
-          marginTop: '24px',
-        }}
-      >
-        <input
-          type="text"
-          placeholder="Nom d'utilisateur"
-          value={form.username}
-          onChange={(event) =>
-            updateField(
-              'username',
-              event.target.value,
-            )
-          }
-          required
-        />
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <label htmlFor="register-username">Username</label>
+          <input
+            id="register-username"
+            className="glass-input"
+            type="text"
+            placeholder="Username"
+            autoComplete="username"
+            value={form.username}
+            onChange={(event) =>
+              updateField('username', event.target.value)
+            }
+            required
+          />
 
-        <input
-          type="text"
-          placeholder="Nom affiché"
-          value={form.display_name}
-          onChange={(event) =>
-            updateField(
-              'display_name',
-              event.target.value,
-            )
-          }
-          required
-          style={{ marginTop: '12px' }}
-        />
+          <label htmlFor="register-display-name">Display name</label>
+          <input
+            id="register-display-name"
+            className="glass-input"
+            type="text"
+            autoComplete="name"
+            value={form.display_name}
+            onChange={(event) =>
+              updateField('display_name', event.target.value)
+            }
+            required
+          />
 
-        <input
-          type="email"
-          placeholder="Adresse email"
-          value={form.email}
-          onChange={(event) =>
-            updateField(
-              'email',
-              event.target.value,
-            )
-          }
-          required
-          style={{ marginTop: '12px' }}
-        />
+          <label htmlFor="register-email">Email</label>
+          <input
+            id="register-email"
+            className="glass-input"
+            type="email"
+            placeholder="Email"
+            autoComplete="email"
+            value={form.email}
+            onChange={(event) =>
+              updateField('email', event.target.value)
+            }
+            required
+          />
 
-        <input
-          type="password"
-          placeholder="Mot de passe"
-          value={form.password}
-          onChange={(event) =>
-            updateField(
-              'password',
-              event.target.value,
-            )
-          }
-          required
-          minLength={8}
-          style={{ marginTop: '12px' }}
-        />
+          <label htmlFor="register-password">Password</label>
+          <input
+            id="register-password"
+            className="glass-input"
+            type="password"
+            placeholder="Password"
+            autoComplete="new-password"
+            minLength={8}
+            value={form.password}
+            onChange={(event) =>
+              updateField('password', event.target.value)
+            }
+            required
+          />
 
-        {error && (
-          <p
-            style={{
-              marginTop: '12px',
-              color: '#e63946',
-            }}
+          <label htmlFor="register-confirm-password">Confirm password</label>
+          <input
+            id="register-confirm-password"
+            className="glass-input"
+            type="password"
+            autoComplete="new-password"
+            placeholder="Confirm password"
+            value={confirmPassword}
+            onChange={(event) =>
+              setConfirmPassword(event.target.value)
+            }
+            required
+          />
+
+          {error && (
+            <p className="auth-error" role="alert">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            className="accent-button"
+            disabled={loading}
           >
-            {error}
-          </p>
-        )}
+            {loading ? 'Creating account…' : 'Sign up'}
+          </button>
+        </form>
 
         <button
-          type="submit"
-          className="accent-button"
-          disabled={loading}
-          style={{ marginTop: '18px' }}
+          type="button"
+          className="glass-button auth-register"
+          onClick={onLogin}
         >
-          {loading
-            ? 'Création...'
-            : 'Créer mon compte'}
+          I already have an account
         </button>
-      </form>
-
-      <button
-        type="button"
-        className="glass-button"
-        onClick={onLogin}
-        style={{ marginTop: '12px' }}
-      >
-        J'ai déjà un compte
-      </button>
-    </section>
+      </section>
+    </main>
   )
 }

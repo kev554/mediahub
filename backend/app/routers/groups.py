@@ -11,9 +11,11 @@ from app.core.dependencies import get_current_user
 from app.db.database import get_db
 from app.models.group import Group, group_members
 from app.models.user import User
+from app.services.media_permissions import can_manage_group
 from app.schemas.group import (
     AddGroupMemberRequest,
     GroupDetailResponse,
+    GroupMemberRoleUpdate,
     GroupMemberResponse,
     GroupResponse,
     GroupCreate,
@@ -75,6 +77,27 @@ def require_group_owner(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the group owner can perform this action.",
         )
+
+
+def require_group_manager(
+    group: Group,
+    current_user: User,
+    db: Session,
+) -> None:
+    if not can_manage_group(group.id, current_user.id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to manage this group.",
+        )
+
+
+def response_group_role(
+    role: str,
+    is_owner: bool = False,
+) -> str:
+    if is_owner:
+        return "owner"
+    return "manager" if role == "member" else role
 
 
 def build_group_response(
@@ -221,7 +244,10 @@ def get_group(
             id=row.id,
             username=row.username,
             display_name=row.display_name,
-            role=row.role,
+            role=response_group_role(
+                row.role,
+                is_owner=row.id == group.owner_id,
+            ),
             joined_at=row.joined_at,
         )
         for row in rows
@@ -259,10 +285,7 @@ def update_group(
         db,
     )
 
-    require_group_owner(
-        group,
-        current_user,
-    )
+    require_group_manager(group, current_user, db)
 
     if data.name is not None:
         group.name = data.name.strip()
@@ -336,7 +359,7 @@ def list_group_members(
     db: Session = Depends(get_db),
 ):
 
-    get_group_for_user(
+    group = get_group_for_user(
         group_id,
         current_user,
         db,
@@ -367,7 +390,10 @@ def list_group_members(
             id=row.id,
             username=row.username,
             display_name=row.display_name,
-            role=row.role,
+            role=response_group_role(
+                row.role,
+                is_owner=row.id == group.owner_id,
+            ),
             joined_at=row.joined_at,
         )
         for row in rows
@@ -402,10 +428,7 @@ def add_group_member(
             detail="Group not found.",
         )
 
-    require_group_owner(
-        group,
-        current_user,
-    )
+    require_group_owner(group, current_user)
 
     user = db.scalar(
         select(User).where(
@@ -436,7 +459,7 @@ def add_group_member(
         group_members.insert().values(
             group_id=group_id,
             user_id=data.user_id,
-            role="member",
+            role=data.role,
         )
     )
 
@@ -464,7 +487,81 @@ def add_group_member(
         id=row.id,
         username=row.username,
         display_name=row.display_name,
-        role=row.role,
+        role=response_group_role(row.role),
+        joined_at=row.joined_at,
+    )
+
+
+# ============================================================
+# UPDATE MEMBER ROLE
+# ============================================================
+
+@router.patch(
+    "/{group_id}/members/{user_id}",
+    response_model=GroupMemberResponse,
+)
+def update_group_member_role(
+    group_id: int,
+    user_id: int,
+    data: GroupMemberRoleUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    group = db.get(Group, group_id)
+    if group is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found.",
+        )
+
+    require_group_owner(group, current_user)
+
+    if user_id == group.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The group owner's role cannot be changed.",
+        )
+
+    result = db.execute(
+        group_members.update()
+        .where(
+            group_members.c.group_id == group_id,
+            group_members.c.user_id == user_id,
+        )
+        .values(role=data.role)
+    )
+
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User is not a member of this group.",
+        )
+
+    db.commit()
+
+    row = db.execute(
+        select(
+            User.id,
+            User.username,
+            User.display_name,
+            group_members.c.role,
+            group_members.c.joined_at,
+        )
+        .join(
+            group_members,
+            group_members.c.user_id == User.id,
+        )
+        .where(
+            group_members.c.group_id == group_id,
+            group_members.c.user_id == user_id,
+        )
+    ).one()
+
+    return GroupMemberResponse(
+        id=row.id,
+        username=row.username,
+        display_name=row.display_name,
+        role=response_group_role(row.role),
         joined_at=row.joined_at,
     )
 

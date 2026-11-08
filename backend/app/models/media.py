@@ -84,6 +84,18 @@ class Media(Base):
         nullable=False,
     )
 
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime,
+        nullable=True,
+        index=True,
+    )
+
+    deleted_by_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+
     owner_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"),
         nullable=False,
@@ -130,6 +142,7 @@ class Media(Base):
     owner = relationship(
         "User",
         back_populates="media",
+        foreign_keys=[owner_id],
     )
     
         
@@ -141,4 +154,10 @@ class Media(Base):
     
     group = relationship(
         "Group",
+    )
+
+    share_links = relationship(
+        "MediaShare",
+        back_populates="media",
+        cascade="all, delete-orphan",
     )

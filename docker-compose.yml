@@ -1,0 +1,97 @@
+services:
+  postgres:
+    image: public.ecr.aws/docker/library/postgres:16-alpine
+
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mediahub
+      POSTGRES_USER: mediahub
+      POSTGRES_PASSWORD: mediahub-password
+    ports:
+      - "5432:5432"
+    volumes:
+      - mediahub_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mediahub -d mediahub"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: docker.io/pgsty/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: mediahub
+      MINIO_ROOT_PASSWORD: mediahub-password
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    volumes:
+      - mediahub_minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: docker.io/pgsty/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 mediahub mediahub-password; do sleep 2; done;
+      mc mb --ignore-existing local/mediahub;
+      "
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://mediahub:mediahub-password@postgres:5432/mediahub
+      R2_ENDPOINT_URL: http://minio:9000
+      R2_ACCESS_KEY_ID: mediahub
+      R2_SECRET_ACCESS_KEY: mediahub-password
+      R2_BUCKET_NAME: mediahub
+      R2_PUBLIC_ENDPOINT_URL: http://localhost:9002
+      R2_REGION: us-east-1
+      MEDIAHUB_STORAGE_DIR: /var/lib/mediahub
+      CORS_ORIGINS: '["http://localhost:5173"]'
+    ports:
+      - "8000:8000"
+    volumes:
+      - mediahub_upload_data:/var/lib/mediahub
+      - ./backend/app:/app/app
+    command:
+      [
+        "sh",
+        "-c",
+        "python create_tables.py && exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
+      ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=5)",
+        ]
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mediahub_postgres_data:
+  mediahub_minio_data:
+  mediahub_upload_data:

@@ -1,4 +1,5 @@
 from pathlib import Path
+from collections.abc import Iterator
 from uuid import uuid4
 import os
 
@@ -20,11 +21,11 @@ load_dotenv(
 # STOCKAGE LOCAL TEMPORAIRE
 # ============================================================
 
-BASE_STORAGE = (
-    Path.home()
-    / "projects"
-    / "mediahub"
-    / "storage"
+BASE_STORAGE = Path(
+    os.getenv(
+        "MEDIAHUB_STORAGE_DIR",
+        str(Path.home() / "projects" / "mediahub" / "storage"),
+    )
 )
 
 TEMP_DIR = BASE_STORAGE / "temp"
@@ -38,6 +39,11 @@ R2_ENDPOINT_URL = os.getenv("R2_ENDPOINT_URL")
 R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
 R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME")
+R2_PUBLIC_ENDPOINT_URL = os.getenv(
+    "R2_PUBLIC_ENDPOINT_URL",
+    R2_ENDPOINT_URL,
+)
+R2_REGION = os.getenv("R2_REGION", "auto")
 
 
 if not R2_ENDPOINT_URL:
@@ -66,7 +72,15 @@ r2_client = boto3.client(
     endpoint_url=R2_ENDPOINT_URL,
     aws_access_key_id=R2_ACCESS_KEY_ID,
     aws_secret_access_key=R2_SECRET_ACCESS_KEY,
-    region_name="auto",
+    region_name=R2_REGION,
+)
+
+public_r2_client = boto3.client(
+    "s3",
+    endpoint_url=R2_PUBLIC_ENDPOINT_URL,
+    aws_access_key_id=R2_ACCESS_KEY_ID,
+    aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+    region_name=R2_REGION,
 )
 
 
@@ -133,16 +147,51 @@ def upload_to_r2(
 # DOWNLOAD R2
 # ============================================================
 
-def download_from_r2(
+def stream_from_r2(
     object_key: str,
-) -> bytes:
+) -> Iterator[bytes]:
 
     response = r2_client.get_object(
         Bucket=R2_BUCKET_NAME,
         Key=object_key,
     )
 
-    return response["Body"].read()
+    body = response["Body"]
+
+    def chunks() -> Iterator[bytes]:
+        try:
+            yield from body.iter_chunks(chunk_size=1024 * 1024)
+        finally:
+            body.close()
+
+    return chunks()
+
+
+def check_r2_connection() -> None:
+    r2_client.head_bucket(Bucket=R2_BUCKET_NAME)
+
+
+def create_media_url(
+    object_key: str,
+    content_type: str,
+    filename: str,
+    disposition: str = "inline",
+) -> str:
+    from urllib.parse import quote
+
+    encoded_filename = quote(filename, safe="")
+    return public_r2_client.generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": R2_BUCKET_NAME,
+            "Key": object_key,
+            "ResponseContentType": content_type,
+            "ResponseContentDisposition": (
+                f"{disposition}; filename*=UTF-8''{encoded_filename}"
+            ),
+        },
+        ExpiresIn=300,
+    )
 
 
 # ============================================================

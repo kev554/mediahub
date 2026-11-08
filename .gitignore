@@ -54,6 +54,7 @@ backend/uploads/
 # Database backups
 # ------------------------------------------------------------
 *.sql
+!backend/migrations/*.sql
 *.dump
 *.bak
 

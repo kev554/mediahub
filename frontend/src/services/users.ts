@@ -1,5 +1,10 @@
 import { apiFetch } from './api'
 
+const USER_PREFERENCES_KEY = 'mediahub_user_preferences'
+
+export function clearCachedUserPreferences(): void {
+  localStorage.removeItem(USER_PREFERENCES_KEY)
+}
 
 export type UserSearchResult = {
   id: number
@@ -24,7 +29,22 @@ export type UserUpdateData = {
   display_name?: string
 }
 
+export type UserPreferences = {
+  theme: 'light' | 'dark' | 'system'
+  language: 'fr' | 'en'
+  default_visibility: 'private' | 'group'
+  media_sort: 'uploaded_at' | 'taken_at' | 'original_name'
+}
 
+export type StorageUsage = {
+  used_bytes: number
+  media_count: number
+  quota_bytes: number | null
+}
+
+export async function getStorageUsage(): Promise<StorageUsage> {
+  return apiFetch<StorageUsage>('/users/me/storage-usage')
+}
 
 export async function searchUsers(
   query = '',
@@ -82,4 +102,33 @@ export async function changePassword(
       body: JSON.stringify(data),
     },
   )
+}
+
+export async function getUserPreferences(
+): Promise<UserPreferences> {
+  const preferences = await apiFetch<UserPreferences>(
+    '/users/me/preferences',
+  )
+  localStorage.setItem(
+    USER_PREFERENCES_KEY,
+    JSON.stringify(preferences),
+  )
+  return preferences
+}
+
+export async function updateUserPreferences(
+  data: Partial<UserPreferences>,
+): Promise<UserPreferences> {
+  const preferences = await apiFetch<UserPreferences>(
+    '/users/me/preferences',
+    {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    },
+  )
+  localStorage.setItem(
+    USER_PREFERENCES_KEY,
+    JSON.stringify(preferences),
+  )
+  return preferences
 }

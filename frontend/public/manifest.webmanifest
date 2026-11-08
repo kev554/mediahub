@@ -1,0 +1,17 @@
+{
+  "name": "MediaHub",
+  "short_name": "MediaHub",
+  "description": "Bibliothèque personnelle de photos et vidéos",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#28221d",
+  "theme_color": "#28221d",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

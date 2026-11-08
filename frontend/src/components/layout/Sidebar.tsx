@@ -1,14 +1,32 @@
-import type { ReactNode } from 'react'
+import {
+  Aperture,
+  Camera,
+  Copy,
+  Sparkles,
+  FolderOpen,
+  Heart,
+  Home,
+  Images,
+  Settings2,
+  Share2,
+  Trash2,
+  Upload,
+  UsersRound,
+  Video,
+  type LucideIcon,
+} from 'lucide-react'
+import { t } from '../../lib/i18n'
 
 type NavItem = {
   label: string
-  icon: ReactNode
+  icon: LucideIcon
   id: string
 }
 
 type SidebarProps = {
   activePage: string
   onNavigate: (page: string) => void
+  onUpload: () => void
   user?: {
     username?: string
     email?: string
@@ -18,24 +36,28 @@ type SidebarProps = {
 
 
 const mainItems: NavItem[] = [
-  { id: 'dashboard', label: 'Accueil', icon: <span>⌂</span> },
-  { id: 'photos', label: 'Photos', icon: <span>▧</span> },
-  { id: 'videos', label: 'Vidéos', icon: <span>▶</span> },
-  { id: 'albums', label: 'Albums', icon: <span>◇</span> },
-  { id: 'timeline', label: 'Timeline', icon: <span>◷</span> },
-  { id: 'favorites', label: 'Favoris', icon: <span>♡</span> },
+  { id: 'dashboard', label: 'Home', icon: Home },
+  { id: 'photos', label: 'Photos', icon: Images },
+  { id: 'videos', label: 'Videos', icon: Video },
+  { id: 'camera', label: 'Camera', icon: Camera },
+  { id: 'albums', label: 'Albums', icon: FolderOpen },
+  { id: 'favorites', label: 'Favorites', icon: Heart },
+  { id: 'smart-albums', label: 'Smart albums', icon: Sparkles },
 ]
 
 
 const secondaryItems: NavItem[] = [
-  { id: 'groups', label: 'Groupes', icon: <span>♧</span> },
-  { id: 'shares', label: 'Partages', icon: <span>↗</span> },
+  { id: 'groups', label: 'Groups', icon: UsersRound },
+  { id: 'shares', label: 'Shared', icon: Share2 },
+  { id: 'trash', label: 'Trash', icon: Trash2 },
+  { id: 'duplicates', label: 'Duplicates', icon: Copy },
 ]
 
 
 export function Sidebar({
   activePage,
   onNavigate,
+  onUpload,
   user,
 }: SidebarProps) {
 
@@ -59,7 +81,7 @@ export function Sidebar({
       >
 
         <span className="sidebar-icon">
-          {item.icon}
+          <item.icon size={17} strokeWidth={1.8} aria-hidden="true" />
         </span>
 
         <span>
@@ -74,12 +96,12 @@ export function Sidebar({
   const displayName =
     user?.display_name ??
     user?.username ??
-    'Kevin'
+    t('Mon compte', 'Account')
 
 
   return (
 
-    <aside className="sidebar glass">
+    <aside className="sidebar glass" aria-label="Navigation principale">
 
 
       <button
@@ -91,12 +113,12 @@ export function Sidebar({
       >
 
         <span className="brand-mark">
-          M
+          <Aperture size={20} strokeWidth={2.3} aria-hidden="true" />
         </span>
 
 
         <span className="brand-name">
-          Media<span>Hub</span>
+          MediaHub
         </span>
 
       </button>
@@ -106,12 +128,28 @@ export function Sidebar({
       <div className="sidebar-section">
 
         <p className="sidebar-title">
-          Bibliothèque
+          {t('Bibliothèque', 'Library')}
         </p>
 
 
         <nav className="sidebar-nav">
-          {mainItems.map(renderItem)}
+          {mainItems.map((item) =>
+            renderItem({
+              ...item,
+              label: t(
+                ({
+                  dashboard: 'Accueil',
+                  photos: 'Photos',
+                  videos: 'Vidéos',
+                  camera: 'Appareil photo',
+                  albums: 'Albums',
+                  favorites: 'Favoris',
+                  'smart-albums': 'Albums intelligents',
+                } as Record<string, string>)[item.id] ?? item.label,
+                item.label,
+              ),
+            }),
+          )}
         </nav>
 
       </div>
@@ -121,16 +159,39 @@ export function Sidebar({
       <div className="sidebar-section">
 
         <p className="sidebar-title">
-          Partage
+          {t('Espace de travail', 'Workspace')}
         </p>
 
 
         <nav className="sidebar-nav">
-          {secondaryItems.map(renderItem)}
+          {secondaryItems.map((item) =>
+            renderItem({
+              ...item,
+              label: t(
+                ({
+                  groups: 'Groupes',
+                  shares: 'Partagés',
+                  trash: 'Corbeille',
+                  duplicates: 'Doublons',
+                } as Record<string, string>)[item.id] ?? item.label,
+                item.label,
+              ),
+            }),
+          )}
         </nav>
 
       </div>
 
+      <button
+        type="button"
+        className="sidebar-item"
+        onClick={onUpload}
+      >
+        <span className="sidebar-icon">
+          <Upload size={17} strokeWidth={1.8} aria-hidden="true" />
+        </span>
+        <span>{t('Importer', 'Upload')}</span>
+      </button>
 
 
       <div className="sidebar-spacer" />
@@ -150,11 +211,11 @@ export function Sidebar({
       >
 
         <span className="sidebar-icon">
-          ⚙
+          <Settings2 size={17} strokeWidth={1.8} aria-hidden="true" />
         </span>
 
         <span>
-          Paramètres
+          {t('Paramètres', 'Settings')}
         </span>
 
       </button>
@@ -162,7 +223,12 @@ export function Sidebar({
 
 
 
-      <div className="sidebar-profile">
+      <button
+        type="button"
+        className="sidebar-profile"
+        onClick={() => onNavigate('settings')}
+        aria-label={t('Ouvrir les paramètres du compte', 'Open account settings')}
+      >
 
 
         <div className="avatar">
@@ -185,23 +251,12 @@ export function Sidebar({
 
 
           <span>
-            Mon espace
+            {t('Mon espace', 'My space')}
           </span>
 
         </div>
 
-
-
-        <button
-          type="button"
-          className="profile-menu"
-          aria-label="Menu profil"
-        >
-          •••
-        </button>
-
-
-      </div>
+      </button>
 
 
     </aside>

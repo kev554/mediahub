@@ -8,6 +8,7 @@ from app.models.album import Album
 from app.models.group import Group, group_members
 from app.models.media import Media
 from app.models.user import User
+from app.services.media_permissions import can_manage_group
 from app.schemas.album import (
     AlbumCreate,
     AlbumResponse,
@@ -54,6 +55,22 @@ def verify_group_access(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not a member of this group.",
+        )
+
+    return group
+
+
+def verify_group_manager(
+    group_id: int,
+    user_id: int,
+    db: Session,
+) -> Group:
+    group = verify_group_access(group_id, user_id, db)
+
+    if not can_manage_group(group_id, user_id, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only group managers can organize group albums.",
         )
 
     return group
@@ -119,13 +136,33 @@ def get_accessible_album(
     )
 
 
+def require_album_manager(
+    album: Album,
+    current_user: User,
+    db: Session,
+) -> None:
+
+    if album.visibility == "group" and album.group_id is not None:
+        if not can_manage_group(album.group_id, current_user.id, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only group managers can organize this album.",
+            )
+        return
+
+    if album.owner_id != current_user.id:
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the album owner can perform this action.",
+        )
+
+
 def require_album_owner(
     album: Album,
     current_user: User,
 ) -> None:
-
     if album.owner_id != current_user.id:
-
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the album owner can perform this action.",
@@ -141,7 +178,8 @@ def get_media_count(
         select(func.count()).select_from(
             Media
         ).where(
-            Media.album_id == album_id
+            Media.album_id == album_id,
+            Media.deleted_at.is_(None),
         )
     ) or 0
 
@@ -215,7 +253,7 @@ def create_album(
                 ),
             )
 
-        verify_group_access(
+        verify_group_manager(
             data.group_id,
             current_user.id,
             db,
@@ -341,9 +379,10 @@ def update_album(
         db,
     )
 
-    require_album_owner(
+    require_album_manager(
         album,
         current_user,
+        db,
     )
 
     new_visibility = (
@@ -357,6 +396,19 @@ def update_album(
         if data.group_id is not None
         else album.group_id
     )
+
+    if (
+        album.visibility == "group"
+        and album.owner_id != current_user.id
+        and (
+            data.visibility is not None
+            or data.group_id is not None
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the album owner can change its visibility or group.",
+        )
 
     # --------------------------------------------------------
     # Nouvelle visibilité privée
@@ -393,7 +445,7 @@ def update_album(
                 ),
             )
 
-        verify_group_access(
+        verify_group_manager(
             new_group_id,
             current_user.id,
             db,
@@ -487,12 +539,23 @@ def list_album_media(
         db,
     )
 
+    album_media = [
+        Media.album_id == album.id,
+        Media.deleted_at.is_(None),
+    ]
+    if album.visibility == "private":
+        album_media.append(Media.owner_id == album.owner_id)
+    else:
+        album_media.extend(
+            [
+                Media.visibility == "group",
+                Media.group_id == album.group_id,
+            ]
+        )
+
     media_items = db.scalars(
         select(Media)
-        .where(
-            Media.album_id == album.id,
-            Media.owner_id == album.owner_id,
-        )
+        .where(*album_media)
         .order_by(
             Media.taken_at.desc().nullslast(),
             Media.uploaded_at.desc(),
@@ -549,14 +612,16 @@ def add_media_to_album(
     )
 
     # Seul le propriétaire de l'album peut le modifier.
-    require_album_owner(
+    require_album_manager(
         album,
         current_user,
+        db,
     )
 
     media = db.scalar(
         select(Media).where(
             Media.id == media_id,
+            Media.deleted_at.is_(None),
         )
     )
 
@@ -569,14 +634,19 @@ def add_media_to_album(
 
     # L'utilisateur doit également avoir le droit
     # d'utiliser ce média.
-    if media.owner_id != current_user.id:
-
+    if album.visibility == "private":
+        if media.owner_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only add your own media to a private album.",
+            )
+    elif (
+        media.visibility != "group"
+        or media.group_id != album.group_id
+    ):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "You can only add your own media "
-                "to an album."
-            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The media and album must belong to the same group.",
         )
 
     media.album_id = album.id
@@ -611,15 +681,17 @@ def remove_media_from_album(
         db,
     )
 
-    require_album_owner(
+    require_album_manager(
         album,
         current_user,
+        db,
     )
 
     media = db.scalar(
         select(Media).where(
             Media.id == media_id,
             Media.album_id == album.id,
+            Media.deleted_at.is_(None),
         )
     )
 

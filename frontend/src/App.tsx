@@ -1,37 +1,50 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import './App.css'
+import './mediahub-design.css'
 
 import { UploadModal } from './components/media/UploadModal'
 import { MediaViewer } from './components/media/MediaViewer'
+import { FavoriteCelebration } from './components/ui/FavoriteCelebration'
 
 import { MainLayout } from './layouts/MainLayout'
 import { useAuth } from './hooks/useAuth'
 
 import { Albums } from './pages/Albums'
 import { Dashboard } from './pages/Dashboard'
+import { Duplicates } from './pages/Duplicates'
 import { Favorites } from './pages/Favorites'
 import { Groups } from './pages/Groups'
 import { Login } from './pages/Login'
 import { Photos } from './pages/Photos'
+import { PublicShare } from './pages/PublicShare'
 import { Register } from './pages/Register'
 import { Settings } from './pages/Settings'
 import { Shares } from './pages/Shares'
-import { Timeline } from './pages/Timeline'
+import { SmartAlbums } from './pages/SmartAlbums'
+import { Trash } from './pages/Trash'
 import { Videos } from './pages/Videos'
+import { Camera } from './pages/Camera'
 
 import type { Media } from './types/media'
+import type { MediaSearchFilters } from './types/mediaSearch'
+import { clearCachedUserPreferences, getUserPreferences } from './services/users'
+import { clearMediaCache } from './services/media'
+import { applyAuroraSettings, getAuroraSettings } from './lib/aurora'
 
 
 type Page =
   | 'dashboard'
   | 'photos'
   | 'videos'
+  | 'camera'
   | 'albums'
-  | 'timeline'
+  | 'smart-albums'
   | 'favorites'
   | 'groups'
   | 'shares'
+  | 'trash'
+  | 'duplicates'
   | 'settings'
 
 
@@ -41,6 +54,8 @@ type AuthPage =
 
 
 function App() {
+  const publicShareToken =
+    window.location.pathname.match(/^\/share\/([a-zA-Z0-9_-]+)\/?$/)?.[1]
 
   const {
     isAuthenticated,
@@ -49,12 +64,16 @@ function App() {
     login,
     register,
     logout,
+    updateUser,
   } = useAuth()
 
 
   const [activePage, setActivePage] =
     useState<Page>('dashboard')
 
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchFilters, setSearchFilters] =
+    useState<MediaSearchFilters>({})
 
   const [authPage, setAuthPage] =
     useState<AuthPage>('login')
@@ -75,6 +94,82 @@ function App() {
   const [viewerMediaList, setViewerMediaList] =
     useState<Media[]>([])
 
+  useEffect(() => {
+    applyAuroraSettings(getAuroraSettings())
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const colorScheme = window.matchMedia('(prefers-color-scheme: dark)')
+    let selectedTheme: 'light' | 'dark' | 'system' = 'dark'
+
+    const applyTheme = () => {
+      if (!active) {
+        return
+      }
+
+      const resolved =
+        selectedTheme === 'system'
+          ? colorScheme.matches
+            ? 'dark'
+            : 'light'
+          : selectedTheme
+
+      document.documentElement.dataset.theme = resolved
+    }
+
+    const handleSystemThemeChange = () => {
+      if (selectedTheme === 'system') {
+        applyTheme()
+      }
+    }
+
+    colorScheme.addEventListener('change', handleSystemThemeChange)
+
+    if (!isAuthenticated) {
+      document.documentElement.lang = 'fr'
+      applyTheme()
+    } else {
+      void getUserPreferences()
+        .then((preferences) => {
+          selectedTheme = preferences.theme
+        document.documentElement.lang = preferences.language
+        applyTheme()
+          clearMediaCache()
+          setMediaRefreshKey((value) => value + 1)
+        })
+        .catch(() => {
+          clearCachedUserPreferences()
+          selectedTheme = 'system'
+          applyTheme()
+        })
+    }
+
+    const handleThemePreference = (event: Event) => {
+      const preferenceEvent =
+        event as CustomEvent<'light' | 'dark' | 'system'>
+      selectedTheme = preferenceEvent.detail
+      applyTheme()
+    }
+
+    window.addEventListener(
+      'mediahub:theme-change',
+      handleThemePreference,
+    )
+
+    return () => {
+      active = false
+      colorScheme.removeEventListener('change', handleSystemThemeChange)
+      window.removeEventListener(
+        'mediahub:theme-change',
+        handleThemePreference,
+      )
+    }
+  }, [isAuthenticated, user?.id])
+
+  if (publicShareToken) {
+    return <PublicShare token={publicShareToken} />
+  }
 
   /*
    * ========================================================
@@ -149,10 +244,31 @@ function App() {
     page: string,
   ) => {
 
+    setUploadOpen(false)
     setActivePage(
       page as Page,
     )
 
+  }
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+  }
+
+  const handleSearchFiltersChange = (filters: MediaSearchFilters) => {
+    setSearchFilters(filters)
+    if (Object.values(filters).some((value) => value !== undefined)) {
+      setActivePage('dashboard')
+    }
+  }
+
+  const handleSearchSubmit = () => {
+    if (
+      searchQuery.trim() ||
+      Object.values(searchFilters).some((value) => value !== undefined)
+    ) {
+      setActivePage('dashboard')
+    }
   }
 
 
@@ -205,7 +321,10 @@ function App() {
         return (
           <Dashboard
             onNavigate={handleNavigate}
-            onUpload={handleUpload}
+            refreshKey={mediaRefreshKey}
+            searchQuery={searchQuery}
+            searchFilters={searchFilters}
+            onMediaClick={handleOpenMedia}
           />
         )
 
@@ -215,6 +334,8 @@ function App() {
           <Photos
             onUpload={handleUpload}
             refreshKey={mediaRefreshKey}
+            searchQuery={searchQuery}
+            searchFilters={searchFilters}
             onMediaClick={handleOpenMedia}
           />
         )
@@ -223,9 +344,18 @@ function App() {
       case 'videos':
         return (
           <Videos
-            onUpload={handleUpload}
             refreshKey={mediaRefreshKey}
+            searchQuery={searchQuery}
+            searchFilters={searchFilters}
             onMediaClick={handleOpenMedia}
+          />
+        )
+
+      case 'camera':
+        return (
+          <Camera
+            onExit={() => handleNavigate('dashboard')}
+            onUploaded={() => setMediaRefreshKey((value) => value + 1)}
           />
         )
 
@@ -238,9 +368,12 @@ function App() {
         )
 
 
-      case 'timeline':
+      case 'smart-albums':
         return (
-          <Timeline
+          <SmartAlbums
+            refreshKey={mediaRefreshKey}
+            searchQuery={searchQuery}
+            searchFilters={searchFilters}
             onMediaClick={handleOpenMedia}
           />
         )
@@ -248,7 +381,11 @@ function App() {
 
       case 'favorites':
         return (
-          <Favorites />
+          <Favorites
+            searchQuery={searchQuery}
+            searchFilters={searchFilters}
+            onMediaClick={handleOpenMedia}
+          />
         )
 
 
@@ -261,7 +398,21 @@ function App() {
       case 'shares':
         return (
           <Shares
+            searchQuery={searchQuery}
             onMediaClick={handleOpenMedia}
+          />
+        )
+
+      case 'trash':
+        return <Trash />
+
+      case 'duplicates':
+        return (
+          <Duplicates
+            onMediaClick={handleOpenMedia}
+            onMediaDeleted={() =>
+              setMediaRefreshKey((value) => value + 1)
+            }
           />
         )
 
@@ -271,6 +422,10 @@ function App() {
           <Settings
             user={user}
             onLogout={logout}
+            onProfileSaved={updateUser}
+            onPreferencesSaved={() =>
+              setMediaRefreshKey((value) => value + 1)
+            }
           />
         )
 
@@ -279,7 +434,9 @@ function App() {
         return (
           <Dashboard
             onNavigate={handleNavigate}
-            onUpload={handleUpload}
+            refreshKey={mediaRefreshKey}
+            searchFilters={searchFilters}
+            onMediaClick={handleOpenMedia}
           />
         )
     }
@@ -297,12 +454,18 @@ function App() {
       activePage={activePage}
       onNavigate={handleNavigate}
       onUpload={handleUpload}
-      onSettings={() => setActivePage('settings')}
+      onSettings={() => handleNavigate('settings')}
       onLogout={logout}
+      searchQuery={searchQuery}
+      onSearchChange={handleSearchChange}
+      onSearchSubmit={handleSearchSubmit}
+      searchFilters={searchFilters}
+      onSearchFiltersChange={handleSearchFiltersChange}
       user={user ?? undefined}
     >
 
       {renderPage()}
+      {!selectedMedia && <FavoriteCelebration />}
 
 
       {/* ==================================================
@@ -341,13 +504,8 @@ function App() {
           mediaList={viewerMediaList}
           onChange={setSelectedMedia}
 
-          onDelete={(item) => {
-
-            console.log(
-              'suppression média',
-              item.id,
-            )
-
+          onDelete={() => {
+            setMediaRefreshKey((value) => value + 1)
           }}
 
           onClose={() => {
@@ -366,4 +524,3 @@ function App() {
 
 
 export default App
-

@@ -1,29 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
 
 :root {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Manrope', system-ui, sans-serif;
+  --font-display: 'Dancing Script', cursive;
+  --font-ui: 'Manrope', system-ui, sans-serif;
 
-  color: #f5f5f5;
-  background: #08090b;
+  color: #f7f1e7;
+  background: #28221d;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 
-  --bg-primary: #08090b;
-  --bg-secondary: #0d0f12;
+  --bg-primary: #28221d;
+  --bg-secondary: #342b24;
 
-  --glass-bg: rgba(255, 255, 255, 0.055);
-  --glass-bg-hover: rgba(255, 255, 255, 0.085);
-  --glass-border: rgba(255, 255, 255, 0.10);
+  /* Glass / surface tokens */
+  --glass-bg: rgba(62, 51, 42, 0.78);
+  --glass-bg-hover: rgba(79, 64, 52, 0.94);
+  --glass-border: rgba(234, 215, 205, 0.15);
 
-  --text-primary: #f5f5f5;
-  --text-secondary: #a5a7ad;
-  --text-muted: #6f727a;
+  --text-primary: #f7f1e7;
+  --text-secondary: #d6cbbd;
+  --text-muted: #b7a795;
 
-  --accent: #e63946;
-  --accent-light: #ff5964;
-  --accent-dark: #b91c2a;
+  /* Warm taupe accents from the selected visual palette. */
+  --accent: #80634e;
+  --accent-light: #c3a48d;
+  --accent-dark: #684d3a;
+
+  --surface-raised: #3e332a;
+  --surface-soft: rgba(247, 241, 231, 0.045);
+  --surface-input: #3b3028;
+  --border-subtle: rgba(234, 215, 205, 0.17);
+  --shadow-color: rgba(30, 23, 18, 0.32);
 
   --radius-sm: 10px;
   --radius-md: 16px;
@@ -31,6 +41,33 @@
   --radius-xl: 28px;
 
   --blur: 24px;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  color: #382e26;
+  background: #f7f1e7;
+
+  --bg-primary: #f7f1e7;
+  --bg-secondary: #e7ddd1;
+
+  --glass-bg: rgba(255, 250, 243, 0.84);
+  --glass-bg-hover: rgba(255, 252, 248, 0.98);
+  --glass-border: rgba(93, 72, 56, 0.14);
+
+  --text-primary: #382e26;
+  --text-secondary: #655649;
+  --text-muted: #887664;
+
+  --accent: #80634e;
+  --accent-light: #684d3a;
+  --accent-dark: #684d3a;
+
+  --surface-raised: #fffaf3;
+  --surface-soft: rgba(93, 72, 56, 0.045);
+  --surface-input: #f0e8de;
+  --border-subtle: rgba(93, 72, 56, 0.16);
+  --shadow-color: rgba(78, 59, 43, 0.12);
 }
 
 * {
@@ -51,17 +88,20 @@ body {
   background:
     radial-gradient(
       circle at 15% 10%,
-      rgba(230, 57, 70, 0.10),
+      rgba(234, 215, 205, 0.10),
       transparent 30%
     ),
     radial-gradient(
       circle at 85% 85%,
-      rgba(230, 57, 70, 0.06),
+      rgba(195, 164, 141, 0.08),
       transparent 30%
     ),
     var(--bg-primary);
 
   color: var(--text-primary);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 button,
@@ -69,10 +109,21 @@ input,
 textarea,
 select {
   font: inherit;
+  color: inherit;
 }
 
 button {
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 75%, white);
+  outline-offset: 3px;
 }
 
 a {
@@ -86,7 +137,7 @@ img {
 }
 
 ::selection {
-  background: rgba(230, 57, 70, 0.35);
+  background: rgba(167, 131, 104, 0.35);
   color: white;
 }
 
@@ -108,4 +159,43 @@ img {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.22);
+}
+
+:root[data-theme='light'] body {
+  background:
+    radial-gradient(
+      circle at 15% 10%,
+      rgba(195, 164, 141, 0.12),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 85% 85%,
+      rgba(234, 215, 205, 0.42),
+      transparent 32%
+    ),
+    var(--bg-primary);
+}
+
+:root[data-theme='light'] ::selection {
+  background: rgba(167, 131, 104, 0.24);
+  color: #382e26;
+}
+
+:root[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background: rgba(93, 72, 56, 0.2);
+}
+
+:root[data-theme='light'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(93, 72, 56, 0.32);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

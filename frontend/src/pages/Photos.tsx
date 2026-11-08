@@ -5,14 +5,26 @@ import {
 } from 'react'
 
 import { MediaGrid } from '../components/media/MediaGrid'
-import { getMedia } from '../services/media'
+import {
+  addToFavorites,
+  getMedia,
+  removeFromFavorites,
+} from '../services/media'
 
 import type { Media } from '../types/media'
+import { t } from '../lib/i18n'
+import {
+  celebrateFavoriteAdded,
+  prepareFavoriteSound,
+} from '../lib/favoriteCelebration'
+import type { MediaSearchFilters } from '../types/mediaSearch'
 
 
 type PhotosProps = {
   onUpload?: () => void
   refreshKey?: number
+  searchQuery?: string
+  searchFilters: MediaSearchFilters
   onMediaClick?: (
     media: Media,
     mediaList: Media[],
@@ -29,6 +41,8 @@ type Filter =
 export function Photos({
   onUpload,
   refreshKey = 0,
+  searchQuery = '',
+  searchFilters,
   onMediaClick,
 }: PhotosProps) {
 
@@ -48,6 +62,9 @@ export function Photos({
   useEffect(() => {
 
     let cancelled = false
+    const timer = window.setTimeout(() => {
+      void loadMedia()
+    }, searchQuery.trim() ? 250 : 0)
 
     async function loadMedia() {
 
@@ -57,7 +74,11 @@ export function Photos({
         setError(null)
 
         const result =
-          await getMedia()
+          await getMedia(false, {
+            media_type: searchFilters.media_type ?? 'image',
+            search: searchQuery.trim() || undefined,
+            ...searchFilters,
+          })
 
         if (!cancelled) {
           setMedia(result)
@@ -85,13 +106,12 @@ export function Photos({
 
     }
 
-    void loadMedia()
-
     return () => {
       cancelled = true
+      window.clearTimeout(timer)
     }
 
-  }, [refreshKey])
+  }, [refreshKey, searchQuery, searchFilters])
 
 
   const filteredMedia =
@@ -100,7 +120,7 @@ export function Photos({
       let result =
         media.filter(
           (item) =>
-            item.media_type === 'image',
+            item.media_type === (searchFilters.media_type ?? 'image'),
         )
 
       if (filter === 'favorites') {
@@ -130,7 +150,7 @@ export function Photos({
 
       return result
 
-    }, [media, filter])
+    }, [media, filter, searchFilters.media_type])
 
 
   const photoCount =
@@ -146,6 +166,29 @@ export function Photos({
         item.media_type === 'video',
     ).length
 
+  async function handleFavorite(item: Media) {
+    const playFavoriteSound = item.is_favorite
+      ? undefined
+      : prepareFavoriteSound()
+    try {
+      const updated = item.is_favorite
+        ? await removeFromFavorites(item.id)
+        : await addToFavorites(item.id)
+      if (!item.is_favorite) {
+        celebrateFavoriteAdded()
+        playFavoriteSound?.()
+      }
+      setMedia((current) =>
+        current.map((mediaItem) =>
+          mediaItem.id === updated.id ? updated : mediaItem,
+        ),
+      )
+    } catch (err) {
+      console.error('Unable to update media favorite state.', err)
+      window.alert('Unable to update favorite.')
+    }
+  }
+
 
   return (
 
@@ -159,33 +202,16 @@ export function Photos({
 
         <div>
 
-          <span className="dashboard-eyebrow">
-            BIBLIOTHÈQUE
-          </span>
+          <span className="dashboard-eyebrow">MA GALERIE</span>
 
-          <h1>
-            Photos & vidéos
-          </h1>
+          <h1>{t('Photos', 'Photos')}</h1>
 
           <p className="text-secondary">
-            Tous tes souvenirs dans un seul espace.
+            {t('Parcours, retrouve et organise tes photos.', 'Browse, find, and organize your photos.')}
           </p>
 
         </div>
 
-
-        {onUpload && (
-
-          <button
-            type="button"
-            className="accent-button"
-            onClick={onUpload}
-          >
-            <span>＋</span>
-            <span>Importer</span>
-          </button>
-
-        )}
 
       </section>
 
@@ -209,7 +235,7 @@ export function Photos({
               setFilter('all')
             }
           >
-            Toutes
+            {t('Toutes', 'All')}
           </button>
 
 
@@ -224,7 +250,7 @@ export function Photos({
               setFilter('recent')
             }
           >
-            Récentes
+            {t('Récentes', 'Recent')}
           </button>
 
 
@@ -239,7 +265,7 @@ export function Photos({
               setFilter('favorites')
             }
           >
-            ♡ Favoris
+            ♡ {t('Favoris', 'Favorites')}
           </button>
 
         </div>
@@ -251,21 +277,21 @@ export function Photos({
 
             {filteredMedia.length}{' '}
 
-            {filteredMedia.length > 1
-              ? 'médias'
-              : 'média'}
+            {filteredMedia.length !== 1
+              ? t('éléments', 'items')
+              : t('élément', 'item')}
 
             <span className="photos-count-detail">
 
               {' · '}
 
               {photoCount}
-              {' photos'}
+              {' '}{t('photos', 'photos')}
 
               {' · '}
 
               {videoCount}
-              {' vidéos'}
+              {' '}{t('vidéos', 'videos')}
 
             </span>
 
@@ -289,11 +315,11 @@ export function Photos({
           </div>
 
           <h3>
-            Chargement des médias...
+            Chargement des photos...
           </h3>
 
           <p className="text-secondary">
-            Récupération de ta galerie.
+            {t('Chargement de ta galerie.', 'Loading your library.')}
           </p>
 
         </div>
@@ -307,7 +333,7 @@ export function Photos({
           </div>
 
           <h3>
-            Impossible de charger les médias
+            {t('Impossible de charger les photos', 'Unable to load photos')}
           </h3>
 
           <p className="text-secondary">
@@ -337,16 +363,16 @@ export function Photos({
           <h3>
 
             {filter === 'favorites'
-              ? 'Aucun favori'
-              : 'Aucune photo'}
+              ? t('Aucun favori pour le moment', 'No favorites yet')
+              : t('Aucune photo pour le moment', 'No photos yet')}
 
           </h3>
 
           <p className="text-secondary">
 
             {filter === 'favorites'
-              ? 'Tes photos favorites apparaîtront ici.'
-              : 'Importe ta première photo pour commencer.'}
+              ? t('Tes photos favorites apparaîtront ici.', 'Your favorite photos will appear here.')
+              : t('Importe ta première photo pour commencer.', 'Upload your first photo to get started.')}
 
           </p>
 
@@ -359,7 +385,7 @@ export function Photos({
                 className="accent-button"
                 onClick={onUpload}
               >
-                ＋ Importer une photo
+                ＋ {t('Importer une photo', 'Upload a photo')}
               </button>
 
             )}
@@ -376,8 +402,8 @@ export function Photos({
         <MediaGrid
           media={filteredMedia}
           onMediaClick={onMediaClick}
+          onFavorite={handleFavorite}
         />
-
       )}
 
     </div>

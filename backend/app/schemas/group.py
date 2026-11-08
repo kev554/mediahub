@@ -1,6 +1,10 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+GroupRole = Literal["owner", "manager", "viewer"]
 
 
 class GroupCreate(BaseModel):
@@ -36,7 +40,7 @@ class GroupMemberResponse(BaseModel):
     id: int
     username: str
     display_name: str
-    role: str
+    role: GroupRole
     joined_at: datetime
 
 
@@ -55,3 +59,8 @@ class GroupDetailResponse(GroupResponse):
 
 class AddGroupMemberRequest(BaseModel):
     user_id: int
+    role: Literal["manager", "viewer"] = "viewer"
+
+
+class GroupMemberRoleUpdate(BaseModel):
+    role: Literal["manager", "viewer"]

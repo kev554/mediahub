@@ -5,10 +5,10 @@ import {
 } from 'react'
 
 import type { Media } from '../../types/media'
+import { t } from '../../lib/i18n'
 
 import {
   deleteMultipleMedia,
-  downloadMedia,
   downloadMultipleMedia,
 } from '../../services/media'
 
@@ -59,6 +59,17 @@ export function MediaGrid({
     setProcessing,
   ] = useState(false)
 
+  const uniqueMedia =
+    useMemo(
+      () =>
+        Array.from(
+          new Map(
+            media.map((item) => [item.id, item]),
+          ).values(),
+        ),
+      [media],
+    )
+
 
   // ------------------------------------------------------
   // Nettoyage de la sélection lorsque la liste change
@@ -71,7 +82,7 @@ export function MediaGrid({
 
         const availableIds =
           new Set(
-            media.map(
+            uniqueMedia.map(
               (item) =>
                 item.id,
             ),
@@ -98,7 +109,7 @@ export function MediaGrid({
       },
     )
 
-  }, [media])
+  }, [uniqueMedia])
 
 
   // ------------------------------------------------------
@@ -108,14 +119,14 @@ export function MediaGrid({
   const visibleMedia =
     useMemo(
       () =>
-        media.filter(
+        uniqueMedia.filter(
           (item) =>
             !hiddenIds.has(
               item.id,
             ),
         ),
       [
-        media,
+        uniqueMedia,
         hiddenIds,
       ],
     )
@@ -227,36 +238,6 @@ export function MediaGrid({
 
 
   // ------------------------------------------------------
-  // Télécharger un média
-  // ------------------------------------------------------
-
-  async function handleDownload(
-    item: Media,
-  ) {
-
-    try {
-
-      await downloadMedia(
-        item,
-      )
-
-    } catch (error) {
-
-      console.error(
-        'Erreur téléchargement média:',
-        error,
-      )
-
-      window.alert(
-        'Impossible de télécharger ce média.',
-      )
-
-    }
-
-  }
-
-
-  // ------------------------------------------------------
   // Télécharger la sélection
   // ------------------------------------------------------
 
@@ -316,11 +297,11 @@ export function MediaGrid({
 
     const confirmed =
       window.confirm(
-        `Supprimer ${selectedMedia.length} média${
+        `Envoyer ${selectedMedia.length} média${
           selectedMedia.length > 1
             ? 's'
             : ''
-        } ?\n\nCette action est définitive.`,
+        } dans la corbeille ?\n\nIls pourront être restaurés pendant 30 jours.`,
       )
 
     if (!confirmed) {
@@ -400,11 +381,11 @@ export function MediaGrid({
       <div className="media-grid-empty glass">
 
         <h3>
-          Aucun média
+          Aucun média pour le moment
         </h3>
 
         <p className="text-secondary">
-          Aucun fichier à afficher.
+          Tes photos et vidéos apparaîtront ici après leur import.
         </p>
 
       </div>
@@ -427,14 +408,15 @@ export function MediaGrid({
           <>
             <button
               type="button"
-              className="button-secondary"
+              className="button-secondary media-selection-toggle"
+              aria-pressed={selectionMode}
               onClick={() =>
                 setSelectionMode(
                   true,
                 )
               }
             >
-              ☑ Sélectionner
+              {t('Sélectionner', 'Select')}
             </button>
 
           </>
@@ -450,14 +432,9 @@ export function MediaGrid({
               </strong>
 
               <span>
-                média
                 {selectedMedia.length > 1
-                  ? 's'
-                  : ''}{' '}
-                sélectionné
-                {selectedMedia.length > 1
-                  ? 's'
-                  : ''}
+                  ? t('éléments sélectionnés', 'items selected')
+                  : t('élément sélectionné', 'item selected')}
               </span>
 
             </div>
@@ -480,8 +457,8 @@ export function MediaGrid({
               >
                 {selectedMedia.length ===
                 visibleMedia.length
-                  ? '☐ Tout désélectionner'
-                  : '☑ Tout sélectionner'}
+                  ? t('Tout désélectionner', 'Deselect all')
+                  : t('Tout sélectionner', 'Select all')}
               </button>
 
 
@@ -500,7 +477,7 @@ export function MediaGrid({
                 {processing
                   ? '⏳'
                   : '📥'}{' '}
-                Télécharger
+                {t('Télécharger', 'Download')}
               </button>
 
 
@@ -519,7 +496,7 @@ export function MediaGrid({
                 {processing
                   ? '⏳'
                   : '🗑️'}{' '}
-                Supprimer
+                {t('Mettre à la corbeille', 'Move to trash')}
               </button>
 
 
@@ -533,7 +510,7 @@ export function MediaGrid({
                   exitSelectionMode
                 }
               >
-                Annuler
+                {t('Annuler', 'Cancel')}
               </button>
 
             </div>
@@ -589,28 +566,6 @@ export function MediaGrid({
                 }
               />
 
-
-              {!selectionMode && (
-
-                <button
-                  type="button"
-                  className="media-card-download"
-                  aria-label={`Télécharger ${item.original_name}`}
-                  title="Télécharger"
-                  onClick={(event) => {
-
-                    event.stopPropagation()
-
-                    void handleDownload(
-                      item,
-                    )
-
-                  }}
-                >
-                  📥
-                </button>
-
-              )}
 
             </div>
 

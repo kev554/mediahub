@@ -19,7 +19,7 @@ export function Modal({
 
   return (
     <div
-      className="media-viewer"
+      className="media-viewer upload-dialog"
       role="dialog"
       aria-modal="true"
       onClick={onClose}

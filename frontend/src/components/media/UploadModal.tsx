@@ -2,12 +2,15 @@ import {
   useEffect,
   useState,
   type ChangeEvent,
+  type DragEvent,
 } from 'react'
 
 import { Modal } from '../ui/Modal'
-import { uploadMedia } from '../../services/media'
+import { uploadMediaResumable } from '../../services/media'
 import { getGroups } from '../../services/groups'
+import { getUserPreferences } from '../../services/users'
 import type { Group } from '../../types/group'
+import { t } from '../../lib/i18n'
 
 type UploadModalProps = {
   open: boolean
@@ -40,6 +43,15 @@ export function UploadModal({
   const [uploading, setUploading] =
     useState(false)
 
+  const [uploadProgress, setUploadProgress] =
+    useState(0)
+
+  const [currentFile, setCurrentFile] =
+    useState('')
+
+  const [dragActive, setDragActive] =
+    useState(false)
+
   const [error, setError] =
     useState<string | null>(null)
 
@@ -51,43 +63,96 @@ export function UploadModal({
       return
     }
 
+    let active = true
+
     setError(null)
     setSuccess(false)
+    setLoadingGroups(true)
 
     async function loadGroups() {
       try {
-        setLoadingGroups(true)
-
-        const result =
-          await getGroups()
-
+        const result = await getGroups()
+        if (!active) {
+          return
+        }
         setGroups(result)
+
+        try {
+          const preferences = await getUserPreferences()
+          if (active) {
+            setVisibility(preferences.default_visibility)
+          }
+        } catch (err) {
+          if (active) {
+            setError(
+              err instanceof Error
+                ? `Préférences indisponibles : ${err.message}`
+                : 'Préférences indisponibles.',
+            )
+          }
+        }
       } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : 'Impossible de charger les groupes.',
-        )
+        if (active) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Impossible de charger les groupes.',
+          )
+        }
       } finally {
-        setLoadingGroups(false)
+        if (active) {
+          setLoadingGroups(false)
+        }
       }
     }
 
-    loadGroups()
+    void loadGroups()
+
+    return () => {
+      active = false
+    }
   }, [open])
+
+  const addFiles = (selected: File[]) => {
+    const supported = selected.filter((file) =>
+      file.type.startsWith('image/') ||
+      file.type.startsWith('video/'),
+    )
+
+    if (supported.length !== selected.length) {
+      setError(
+        t(
+          'Seuls les fichiers image et vidéo sont acceptés.',
+          'Only image and video files are supported.',
+        ),
+      )
+    } else {
+      setError(null)
+    }
+
+    setFiles(supported)
+    setSuccess(false)
+  }
 
   const handleFileChange = (
     event: ChangeEvent<HTMLInputElement>,
   ) => {
-    const selected =
+    addFiles(
       event.target.files
         ? Array.from(event.target.files)
-        : []
+        : [],
+    )
+    event.target.value = ''
+  }
 
-      setFiles(selected)
-      setError(null)
-      setSuccess(false)
+  const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault()
+    setDragActive(false)
+
+    if (!uploading) {
+      addFiles(Array.from(event.dataTransfer.files))
     }
+  }
 
   const handleVisibilityChange = (
     value: Visibility,
@@ -122,15 +187,27 @@ export function UploadModal({
       setError(null)
       setSuccess(false)
 
-      for (const file of files) {
-        await uploadMedia(
+      setUploadProgress(0)
+      for (const [index, file] of files.entries()) {
+        setCurrentFile(file.name)
+        await uploadMediaResumable(
           file,
           visibility,
           groupId ?? undefined,
+          (uploadedBytes, totalBytes) => {
+            const fileProgress = totalBytes > 0
+              ? uploadedBytes / totalBytes
+              : 1
+            setUploadProgress(
+              Math.round(((index + fileProgress) / files.length) * 100),
+            )
+          },
         )
-       }    
+      }
 
       setSuccess(true)
+      setUploadProgress(100)
+      setCurrentFile('')
       setFiles([])
       setVisibility('private')
       setGroupId(null)
@@ -154,11 +231,21 @@ export function UploadModal({
   return (
     <Modal
       open={open}
-      title="Importer un média"
+      title={t('Importer un média', 'Upload media')}
       onClose={uploading ? () => {} : onClose}
     >
       <div className="upload-modal">
-        <label className="upload-dropzone">
+        <label
+          className={`upload-dropzone ${dragActive ? 'drag-active' : ''}`}
+          onDragOver={(event) => {
+            event.preventDefault()
+            if (!uploading) {
+              setDragActive(true)
+            }
+          }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={handleDrop}
+        >
           <input
             type="file"
             accept="image/*,video/*"
@@ -173,32 +260,33 @@ export function UploadModal({
 
           <strong>
             {files.length > 0
-               ? `${files.length} fichier(s) sélectionné(s)`
-               : 'Choisir une photo ou une vidéo'}
+               ? t(`${files.length} fichier(s) sélectionné(s)`, `${files.length} file(s) selected`)
+               : t('Choisir une photo ou une vidéo', 'Choose a photo or video')}
           </strong>
 
           <span className="text-secondary">
-            Images et vidéos
+            {t('Images et vidéos · ou glisse-les ici', 'Images and videos · or drop them here')}
           </span>
         </label>
 
         {files.length > 0 && (
-  <         div className="upload-file-info glass">
-              {files.map((file) => (
-                <div key={file.name}>
-                <strong>{file.name}</strong>
-
+          <div className="upload-file-info glass" aria-live="polite">
+            {files.map((file, index) => (
+              <div
+                key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+              >
+                <strong title={file.name}>{file.name}</strong>
                 <span className="text-secondary">
                   {formatFileSize(file.size)}
                 </span>
-            </div>
-           ))}
-         </div>
-       )}
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="upload-section">
           <span className="dashboard-eyebrow">
-            VISIBILITÉ
+            {t('VISIBILITÉ', 'VISIBILITY')}
           </span>
 
           <div className="upload-visibility-options">
@@ -219,9 +307,9 @@ export function UploadModal({
               <span>🔒</span>
 
               <span>
-                <strong>Privé</strong>
+                <strong>{t('Privé', 'Private')}</strong>
                 <small>
-                  Seulement toi
+                  {t('Seulement toi', 'Only you')}
                 </small>
               </span>
             </button>
@@ -243,9 +331,9 @@ export function UploadModal({
               <span>👥</span>
 
               <span>
-                <strong>Groupe</strong>
+                <strong>{t('Groupe', 'Group')}</strong>
                 <small>
-                  Partager avec un groupe
+                  {t('Partager avec un groupe', 'Share with a group')}
                 </small>
               </span>
             </button>
@@ -258,16 +346,16 @@ export function UploadModal({
               htmlFor="upload-group"
               className="dashboard-eyebrow"
             >
-              GROUPE
+              {t('GROUPE', 'GROUP')}
             </label>
 
             {loadingGroups ? (
               <div className="upload-loading">
-                Chargement des groupes...
+                {t('Chargement des groupes…', 'Loading groups…')}
               </div>
             ) : groups.length === 0 ? (
               <div className="upload-no-groups">
-                Tu n’as encore aucun groupe.
+                {t('Tu n’as encore aucun groupe.', 'You are not in any groups yet.')}
               </div>
             ) : (
               <select
@@ -285,7 +373,7 @@ export function UploadModal({
                 disabled={uploading}
               >
                 <option value="">
-                  Sélectionner un groupe
+                  {t('Sélectionner un groupe', 'Select a group')}
                 </option>
 
                 {groups.map((group) => (
@@ -309,7 +397,23 @@ export function UploadModal({
 
         {success && (
           <div className="upload-message success">
-            Média importé avec succès ✓
+            {t('Média importé avec succès ✓', 'Media uploaded successfully ✓')}
+          </div>
+        )}
+
+        {uploading && (
+          <div className="upload-progress">
+            <progress
+              value={uploadProgress}
+              max={100}
+              aria-label={t('Progression de l’import', 'Upload progress')}
+            />
+            <span className="text-secondary">
+              {currentFile
+                ? `${t('Import en cours :', 'Uploading:')} ${currentFile} · `
+                : `${t('Importation reprenable :', 'Resumable upload:')} `}
+              {uploadProgress} %
+            </span>
           </div>
         )}
 
@@ -320,7 +424,7 @@ export function UploadModal({
             onClick={onClose}
             disabled={uploading}
           >
-            Annuler
+            {t('Annuler', 'Cancel')}
           </button>
 
           <button
@@ -335,8 +439,8 @@ export function UploadModal({
             }
           >
             {uploading
-              ? 'Importation...'
-              : 'Importer'}
+              ? t('Importation…', 'Uploading…')
+              : t('Importer', 'Upload')}
           </button>
         </div>
       </div>

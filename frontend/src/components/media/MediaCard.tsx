@@ -1,5 +1,7 @@
 import type { Media } from '../../types/media'
 import { useAuthenticatedMedia } from '../../hooks/useAuthenticatedMedia'
+import { Heart, Play, Search } from 'lucide-react'
+import { t } from '../../lib/i18n'
 
 type MediaCardProps = {
   media: Media
@@ -50,7 +52,9 @@ export function MediaCard({
       media.taken_at ||
         media.uploaded_at,
     ).toLocaleDateString(
-      'fr-FR',
+      document.documentElement.lang === 'en'
+        ? 'en-US'
+        : 'fr-FR',
       {
         day: '2-digit',
         month: 'short',
@@ -74,13 +78,18 @@ export function MediaCard({
     <article
       className={`media-card glass ${
         selected
-          ? 'media-card-selected'
+          ? 'media-card-selected selected'
           : ''
       }`}
-      onClick={handleCardClick}
     >
 
       <div className="media-card-preview">
+        <button
+          type="button"
+          className="media-card-preview-trigger"
+          onClick={handleCardClick}
+          aria-label={`${t(selectable ? (selected ? 'Désélectionner' : 'Sélectionner') : 'Ouvrir', selectable ? (selected ? 'Deselect' : 'Select') : 'Open')} ${media.original_name}`}
+        >
 
         {thumbnailLoading ? (
 
@@ -107,10 +116,18 @@ export function MediaCard({
         <div className="media-card-overlay" />
 
         {isVideo && (
-          <span className="media-card-type">
-            ▶ Vidéo
+          <span className="media-video-play" aria-label="Lire la vidéo">
+            <Play size={21} fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
           </span>
         )}
+
+        {!selectable && !isVideo && (
+          <div className="media-card-open">
+            <Search size={18} strokeWidth={1.8} aria-hidden="true" />
+          </div>
+        )}
+
+        </button>
 
         {/* SÉLECTION */}
 
@@ -151,29 +168,25 @@ export function MediaCard({
               ? 'Retirer des favoris'
               : 'Ajouter aux favoris'
           }
+          aria-pressed={isFavorite}
           onClick={(event) => {
             event.stopPropagation()
             onFavorite?.(media)
           }}
         >
-          {isFavorite
-            ? '♥'
-            : '♡'}
+          <Heart
+            size={17}
+            fill={isFavorite ? 'currentColor' : 'none'}
+            strokeWidth={1.8}
+            aria-hidden="true"
+          />
         </button>
-
-        {/* OUVERTURE */}
-
-        {!selectable && (
-          <div className="media-card-open">
-            <span>⌕</span>
-          </div>
-        )}
 
       </div>
 
       <div className="media-card-info">
 
-        <div className="media-card-title">
+        <div className="media-card-title" title={media.original_name}>
           {media.original_name}
         </div>
 

@@ -7,11 +7,16 @@ export type Group = {
   member_count: number
 }
 
+export type GroupRole =
+  | 'owner'
+  | 'manager'
+  | 'viewer'
+
 export type GroupMember = {
   id: number
   username: string
   display_name: string
-  role: string
+  role: GroupRole
   joined_at: string
 }
 

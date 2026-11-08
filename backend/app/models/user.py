@@ -54,6 +54,20 @@ class User(Base):
         "Media",
         back_populates="owner",
         cascade="all, delete-orphan",
+        foreign_keys="Media.owner_id",
+    )
+
+    preferences = relationship(
+        "UserPreference",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    share_links = relationship(
+        "MediaShare",
+        back_populates="owner",
+        cascade="all, delete-orphan",
     )
 
     albums = relationship(

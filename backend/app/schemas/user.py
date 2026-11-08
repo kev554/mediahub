@@ -91,6 +91,24 @@ class UserResponse(BaseModel):
     )
 
 
+class UserPreferencesUpdate(BaseModel):
+    theme: str | None = None
+    language: str | None = None
+    default_visibility: str | None = None
+    media_sort: str | None = None
+
+
+class UserPreferencesResponse(BaseModel):
+    theme: str
+    language: str
+    default_visibility: str
+    media_sort: str
+
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
+
+
 # ============================================================
 # TOKEN
 # ============================================================

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useState,
 } from 'react'
@@ -10,8 +11,11 @@ import {
 } from '../services/media'
 
 import type { Media } from '../types/media'
+import type { MediaSearchFilters } from '../types/mediaSearch'
 
 type FavoritesProps = {
+  searchQuery?: string
+  searchFilters: MediaSearchFilters
   onMediaClick?: (
     media: Media,
     mediaList: Media[],
@@ -19,6 +23,8 @@ type FavoritesProps = {
 }
 
 export function Favorites({
+  searchQuery = '',
+  searchFilters,
   onMediaClick,
 }: FavoritesProps) {
   const [media, setMedia] = useState<Media[]>([])
@@ -27,13 +33,13 @@ export function Favorites({
     useState<string | null>(null)
 
 
-  async function loadFavorites() {
+  const loadFavorites = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
 
       const result =
-        await getFavoriteMedia()
+        await getFavoriteMedia(searchQuery, searchFilters)
 
       setMedia(result)
 
@@ -46,12 +52,16 @@ export function Favorites({
     } finally {
       setLoading(false)
     }
-  }
+  }, [searchQuery, searchFilters])
 
 
   useEffect(() => {
-    void loadFavorites()
-  }, [])
+    const timer = window.setTimeout(
+      () => void loadFavorites(),
+      searchQuery.trim() ? 250 : 0,
+    )
+    return () => window.clearTimeout(timer)
+  }, [loadFavorites, searchQuery, searchFilters])
 
 
   async function handleFavorite(item: Media) {
@@ -167,7 +177,9 @@ export function Favorites({
 
         <MediaGrid
           media={media}
-          onMediaClick={onMediaClick}
+          onMediaClick={(item, items) =>
+            onMediaClick?.(item, items)
+          }
           onFavorite={handleFavorite}
         />
 

@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useState,
 } from 'react'
 
@@ -9,12 +10,23 @@ import {
   getAlbumMedia,
   getAlbums,
 } from '../services/albums'
+import { getMedia } from '../services/media'
+import { getGroups } from '../services/groups'
 
 import { AlbumGrid } from '../components/albums/AlbumGrid'
 import { MediaGrid } from '../components/media/MediaGrid'
+import { TimelineGroupCard } from '../components/timeline/TimelineGroupCard'
+import {
+  createHolidaySmartAlbums,
+  createMonthlySmartAlbums,
+  createSeasonSmartAlbums,
+  type SmartAlbumGroup,
+} from '../lib/smartAlbums'
 
 import type { Album } from '../types/album'
 import type { Media } from '../types/media'
+import type { Group } from '../types/group'
+import { t } from '../lib/i18n'
 
 type AlbumsProps = {
   refreshKey?: number
@@ -47,8 +59,14 @@ export function Albums({
   const [albums, setAlbums] =
     useState<Album[]>([])
 
+  const [libraryMedia, setLibraryMedia] =
+    useState<Media[]>([])
+
   const [selectedAlbum, setSelectedAlbum] =
     useState<Album | null>(null)
+
+  const [selectedSmartAlbum, setSelectedSmartAlbum] =
+    useState<(SmartAlbumGroup & { category: string }) | null>(null)
 
   const [albumMedia, setAlbumMedia] =
     useState<Media[]>([])
@@ -80,6 +98,15 @@ export function Albums({
   const [groupId, setGroupId] =
     useState('')
 
+  const [groups, setGroups] =
+    useState<Group[]>([])
+
+  const [groupsLoading, setGroupsLoading] =
+    useState(false)
+
+  const [groupsError, setGroupsError] =
+    useState<string | null>(null)
+
   const [creating, setCreating] =
     useState(false)
 
@@ -92,9 +119,19 @@ export function Albums({
       setLoading(true)
       setError(null)
 
-      const result = await getAlbums()
+      const albumResult = await getAlbums()
+      setAlbums(albumResult)
 
-      setAlbums(result)
+      try {
+        setLibraryMedia(await getMedia(true))
+      } catch (mediaError) {
+        console.error('Unable to load media for smart albums.', mediaError)
+        setError(
+          mediaError instanceof Error
+            ? mediaError.message
+            : t('Impossible de charger les médias des albums automatiques.', 'Unable to load media for smart albums.'),
+        )
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -109,6 +146,55 @@ export function Albums({
   useEffect(() => {
     void loadAlbums()
   }, [refreshKey])
+
+  const monthlyAlbums = useMemo(
+    () => createMonthlySmartAlbums(libraryMedia),
+    [libraryMedia],
+  )
+  const seasonalAlbums = useMemo(
+    () => createSeasonSmartAlbums(libraryMedia),
+    [libraryMedia],
+  )
+  const holidayAlbums = useMemo(
+    () => createHolidaySmartAlbums(libraryMedia),
+    [libraryMedia],
+  )
+  function openSmartAlbum(album: SmartAlbumGroup, category: string) {
+    setSelectedSmartAlbum({ ...album, category })
+  }
+
+  useEffect(() => {
+    if (!modalOpen) {
+      return
+    }
+
+    let active = true
+
+    void getGroups()
+      .then((result) => {
+        if (active) {
+          setGroups(result)
+        }
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setGroupsError(
+            err instanceof Error
+              ? err.message
+              : t('Impossible de charger les groupes.', 'Unable to load groups.'),
+          )
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setGroupsLoading(false)
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [modalOpen])
 
   // ==========================================================
   // OUVRIR UN ALBUM
@@ -199,6 +285,7 @@ export function Albums({
 
   function handleBack() {
     setSelectedAlbum(null)
+    setSelectedSmartAlbum(null)
     setAlbumMedia([])
     setError(null)
   }
@@ -269,6 +356,7 @@ export function Albums({
     setYear(new Date().getFullYear())
     setVisibility('private')
     setGroupId('')
+    setGroupsError(null)
     setModalOpen(false)
   }
 
@@ -330,7 +418,7 @@ export function Albums({
               className="glass-button"
               onClick={handleBack}
             >
-              ← Retour aux albums
+              ← {t('Retour aux albums', 'Back to albums')}
             </button>
 
             <div
@@ -349,7 +437,7 @@ export function Albums({
 
               <p className="text-secondary">
                 {selectedAlbum.description ||
-                  'Aucune description.'}
+                  t('Aucune description.', 'No description.')}
               </p>
 
             </div>
@@ -365,15 +453,15 @@ export function Albums({
             <span>
               {selectedAlbum.visibility ===
               'group'
-                ? '👥 Groupe'
-                : '🔒 Privé'}
+                ? `👥 ${t('Groupe', 'Group')}`
+                : `🔒 ${t('Privé', 'Private')}`}
             </span>
 
             <span>
               {albumMedia.length}{' '}
               {albumMedia.length > 1
-                ? 'médias'
-                : 'média'}
+                ? t('médias', 'items')
+                : t('média', 'item')}
             </span>
 
           </div>
@@ -394,11 +482,11 @@ export function Albums({
             </div>
 
             <h3>
-              Chargement de l’album...
+              {t('Chargement de l’album…', 'Loading album…')}
             </h3>
 
             <p className="text-secondary">
-              Récupération des médias.
+              {t('Récupération des médias.', 'Loading media.')}
             </p>
 
           </div>
@@ -409,6 +497,42 @@ export function Albums({
           />
         )}
 
+      </div>
+    )
+  }
+
+  if (selectedSmartAlbum) {
+    return (
+      <div className="albums-page fade-in">
+        <section className="page-section-header">
+          <div>
+            <button type="button" className="glass-button" onClick={handleBack}>
+              ← {t('Retour aux albums', 'Back to albums')}
+            </button>
+            <div style={{ marginTop: '1.5rem' }}>
+              <span className="dashboard-eyebrow">
+                {selectedSmartAlbum.category}
+              </span>
+              <h1>{selectedSmartAlbum.title}</h1>
+              <p className="text-secondary">
+                {t(
+                  'Cet album se met à jour automatiquement selon les dates de tes médias.',
+                  'This album updates automatically from your media dates.',
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="album-detail-meta">
+            <span>
+              {selectedSmartAlbum.media.length}{' '}
+              {t('médias', 'items')}
+            </span>
+          </div>
+        </section>
+        <MediaGrid
+          media={selectedSmartAlbum.media}
+          onMediaClick={onMediaClick}
+        />
       </div>
     )
   }
@@ -425,14 +549,13 @@ export function Albums({
         <div>
 
           <span className="dashboard-eyebrow">
-            ORGANISATION
+            {t('ORGANISATION', 'ORGANIZATION')}
           </span>
 
-          <h1>Albums</h1>
+          <h1>{t('Albums', 'Albums')}</h1>
 
           <p className="text-secondary">
-            Organise tes photos et vidéos
-            par année et par événement.
+            {t('Organise tes photos et vidéos par année et par événement.', 'Organize your photos and videos by year and event.')}
           </p>
 
         </div>
@@ -442,11 +565,14 @@ export function Albums({
           className="accent-button"
           onClick={() => {
             setError(null)
+            setGroups([])
+            setGroupsError(null)
+            setGroupsLoading(true)
             setModalOpen(true)
           }}
         >
           <span>＋</span>
-          <span>Créer un album</span>
+          <span>{t('Créer un album', 'Create album')}</span>
         </button>
 
       </section>
@@ -465,22 +591,129 @@ export function Albums({
           </div>
 
           <h3>
-            Chargement des albums...
+            {t('Chargement des albums…', 'Loading albums…')}
           </h3>
 
           <p className="text-secondary">
-            Récupération de ta bibliothèque.
+            {t('Récupération de ta bibliothèque.', 'Loading your library.')}
           </p>
 
         </div>
       ) : (
-        <AlbumGrid
-          albums={albums}
-          onAlbumClick={
-            handleAlbumClick
-          }
-          onDelete={handleDelete}
-        />
+        <>
+          <section className="smart-albums-section">
+            <div className="smart-albums-heading">
+              <div>
+                <span className="dashboard-eyebrow">
+                  {t('PÉRIODES DE L’ANNÉE', 'SEASONS')}
+                </span>
+                <h2>{t('Albums par saison', 'Seasonal albums')}</h2>
+              </div>
+            </div>
+            {seasonalAlbums.length > 0 ? (
+              <div className="timeline-years">
+                {seasonalAlbums.map((smartAlbum) => (
+                  <TimelineGroupCard
+                    key={smartAlbum.id}
+                    title={smartAlbum.title}
+                    media={smartAlbum.media}
+                    subtitle={`${smartAlbum.media.length} ${t('souvenirs', 'memories')}`}
+                    onClick={() => openSmartAlbum(
+                      smartAlbum,
+                      t('ALBUM SAISONNIER', 'SEASONAL ALBUM'),
+                    )}
+                  />
+                ))}
+              </div>
+            ) : <p className="text-secondary">{t('Les albums saisonniers apparaîtront avec tes médias.', 'Seasonal albums will appear as you add media.')}</p>}
+          </section>
+
+          <section className="smart-albums-section">
+            <div className="smart-albums-heading">
+              <div>
+                <span className="dashboard-eyebrow">
+                  {t('CALENDRIERS CAMEROUNAIS ET RUSSES', 'CAMEROONIAN AND RUSSIAN CALENDARS')}
+                </span>
+                <h2>{t('Fêtes et jours marquants', 'Holidays and special days')}</h2>
+              </div>
+            </div>
+            {holidayAlbums.length > 0 ? (
+              <div className="timeline-years">
+                {holidayAlbums.map((smartAlbum) => (
+                  <TimelineGroupCard
+                    key={smartAlbum.id}
+                    title={smartAlbum.title}
+                    media={smartAlbum.media}
+                    subtitle={`${smartAlbum.media.length} ${t('souvenirs', 'memories')}`}
+                    onClick={() => openSmartAlbum(
+                      smartAlbum,
+                      t('ALBUM DE FÊTE', 'HOLIDAY ALBUM'),
+                    )}
+                  />
+                ))}
+              </div>
+            ) : <p className="text-secondary">{t('Aucun média trouvé pour ces jours de fête.', 'No media found for these holidays yet.')}</p>}
+          </section>
+
+          <section className="smart-albums-section">
+            <div className="smart-albums-heading">
+              <div>
+                <span className="dashboard-eyebrow">
+                  {t('DATES', 'DATES')}
+                </span>
+                <h2>{t('Albums par mois', 'Albums by month')}</h2>
+              </div>
+            </div>
+            {monthlyAlbums.length > 0 ? (
+              <div className="timeline-years">
+                {monthlyAlbums.map((smartAlbum) => (
+                  <TimelineGroupCard
+                    key={smartAlbum.id}
+                    title={smartAlbum.title}
+                    media={smartAlbum.media}
+                    subtitle={`${smartAlbum.media.length} ${t('souvenirs', 'memories')}`}
+                    onClick={() => openSmartAlbum(
+                      smartAlbum,
+                      t('ALBUM MENSUEL', 'MONTHLY ALBUM'),
+                    )}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="glass media-grid-empty">
+                {t(
+                  'Ajoute des médias pour créer automatiquement tes premiers albums.',
+                  'Add media to automatically create your first albums.',
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="manual-albums-section">
+            <div className="smart-albums-heading">
+              <div>
+                <span className="dashboard-eyebrow">
+                  {t('PERSONNALISÉS', 'CUSTOM')}
+                </span>
+                <h2>{t('Albums manuels', 'Manual albums')}</h2>
+              </div>
+            </div>
+            {albums.length > 0 ? (
+              <AlbumGrid
+                albums={albums}
+                onAlbumClick={handleAlbumClick}
+                onDelete={handleDelete}
+              />
+            ) : (
+              <p className="text-secondary">
+                {t(
+                  'Aucun album manuel pour le moment. Tu peux en créer un avec le bouton ci-dessus.',
+                  'No manual albums yet. Use the button above to create one.',
+                )}
+              </p>
+            )}
+          </section>
+        </>
       )}
 
       {/* ======================================================
@@ -508,11 +741,11 @@ export function Albums({
               <div>
 
                 <span className="dashboard-eyebrow">
-                  NOUVEL ALBUM
+                  {t('NOUVEL ALBUM', 'NEW ALBUM')}
                 </span>
 
                 <h2>
-                  Créer un album
+                  {t('Créer un album', 'Create album')}
                 </h2>
 
               </div>
@@ -539,7 +772,7 @@ export function Albums({
               {/* NOM */}
 
               <label>
-                Nom
+                {t('Nom', 'Name')}
 
                 <input
                   value={name}
@@ -548,7 +781,7 @@ export function Albums({
                       event.target.value,
                     )
                   }
-                  placeholder="Ex. Vacances 2026"
+                  placeholder={t('Ex. Vacances 2026', 'e.g. Summer trip 2026')}
                   maxLength={150}
                   required
                 />
@@ -557,7 +790,7 @@ export function Albums({
               {/* DESCRIPTION */}
 
               <label>
-                Description
+                {t('Description', 'Description')}
 
                 <textarea
                   value={description}
@@ -566,7 +799,7 @@ export function Albums({
                       event.target.value,
                     )
                   }
-                  placeholder="Description de l'album..."
+                  placeholder={t('Description de l’album…', 'Album description…')}
                   maxLength={5000}
                   rows={4}
                 />
@@ -575,7 +808,7 @@ export function Albums({
               {/* ANNEE */}
 
               <label>
-                Année
+                {t('Année', 'Year')}
 
                 <input
                   type="number"
@@ -598,7 +831,7 @@ export function Albums({
               <div className="album-visibility">
 
                 <span>
-                  Visibilité
+                  {t('Visibilité', 'Visibility')}
                 </span>
 
                 <div className="album-visibility-options">
@@ -616,7 +849,7 @@ export function Albums({
                       )
                     }
                   >
-                    🔒 Privé
+                    🔒 {t('Privé', 'Private')}
                   </button>
 
                   <button
@@ -632,7 +865,7 @@ export function Albums({
                       )
                     }
                   >
-                    👥 Groupe
+                    👥 {t('Groupe', 'Group')}
                   </button>
 
                 </div>
@@ -644,24 +877,37 @@ export function Albums({
               {visibility === 'group' && (
                 <label>
 
-                  ID du groupe
+                  {t('Groupe', 'Group')}
 
-                  <input
-                    type="number"
+                  <select
                     value={groupId}
                     onChange={(event) =>
                       setGroupId(
                         event.target.value,
                       )
                     }
-                    placeholder="Ex. 1"
-                    min={1}
+                    disabled={groupsLoading || groups.length === 0}
                     required
-                  />
+                  >
+                    <option value="">
+                      {groupsLoading
+                        ? t('Chargement des groupes…', 'Loading groups…')
+                        : t('Sélectionner un groupe', 'Select a group')}
+                    </option>
+                    {groups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
 
                   <small className="text-secondary">
-                    Tu dois être membre du groupe
-                    sélectionné.
+                    {groupsError ||
+                      (groupsLoading
+                        ? t('Récupération des groupes disponibles.', 'Loading available groups.')
+                        : groups.length === 0
+                          ? t('Aucun groupe disponible. Crée ou rejoins un groupe avant de partager cet album.', 'No groups available. Create or join a group before sharing this album.')
+                          : t('Choisis le groupe avec lequel partager cet album.', 'Choose the group to share this album with.'))}
                   </small>
 
                 </label>
@@ -677,7 +923,7 @@ export function Albums({
                   onClick={resetCreateForm}
                   disabled={creating}
                 >
-                  Annuler
+                  {t('Annuler', 'Cancel')}
                 </button>
 
                 <button
@@ -688,13 +934,13 @@ export function Albums({
                     !name.trim() ||
                     (
                       visibility === 'group' &&
-                      !groupId.trim()
+                      (!groupId.trim() || groupsLoading || groups.length === 0)
                     )
                   }
                 >
                   {creating
-                    ? 'Création...'
-                    : 'Créer l’album'}
+                    ? t('Création…', 'Creating…')
+                    : t('Créer l’album', 'Create album')}
                 </button>
 
               </div>

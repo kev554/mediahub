@@ -5,13 +5,24 @@ import {
 } from 'react'
 
 import { MediaGrid } from '../components/media/MediaGrid'
-import { getMedia } from '../services/media'
+import {
+  addToFavorites,
+  getMedia,
+  removeFromFavorites,
+} from '../services/media'
 
 import type { Media } from '../types/media'
+import { t } from '../lib/i18n'
+import {
+  celebrateFavoriteAdded,
+  prepareFavoriteSound,
+} from '../lib/favoriteCelebration'
+import type { MediaSearchFilters } from '../types/mediaSearch'
 
 type VideosProps = {
-  onUpload?: () => void
   refreshKey?: number
+  searchQuery?: string
+  searchFilters: MediaSearchFilters
   onMediaClick?: (
     media: Media,
     mediaList: Media[],
@@ -24,8 +35,9 @@ type Filter =
   | 'recent'
 
 export function Videos({
-  onUpload,
   refreshKey = 0,
+  searchQuery = '',
+  searchFilters,
   onMediaClick,
 }: VideosProps) {
   const [media, setMedia] =
@@ -42,6 +54,9 @@ export function Videos({
 
   useEffect(() => {
     let cancelled = false
+    const timer = window.setTimeout(() => {
+      void loadMedia()
+    }, searchQuery.trim() ? 250 : 0)
 
     async function loadMedia() {
       try {
@@ -49,7 +64,11 @@ export function Videos({
         setError(null)
 
         const result =
-          await getMedia()
+          await getMedia(false, {
+            media_type: searchFilters.media_type ?? 'video',
+            search: searchQuery.trim() || undefined,
+            ...searchFilters,
+          })
 
         if (!cancelled) {
           setMedia(result)
@@ -69,17 +88,16 @@ export function Videos({
       }
     }
 
-    void loadMedia()
-
     return () => {
       cancelled = true
+      window.clearTimeout(timer)
     }
-  }, [refreshKey])
+  }, [refreshKey, searchQuery, searchFilters])
 
   const filteredMedia = useMemo(() => {
     // La page Vidéos affiche uniquement les vidéos.
     let result = media.filter(
-      (item) => item.media_type === 'video',
+      (item) => item.media_type === (searchFilters.media_type ?? 'video'),
     )
 
     if (filter === 'favorites') {
@@ -101,11 +119,34 @@ export function Videos({
     }
 
     return result
-  }, [media, filter])
+  }, [media, filter, searchFilters.media_type])
 
   const videoCount = media.filter(
     (item) => item.media_type === 'video',
   ).length
+
+  async function handleFavorite(item: Media) {
+    const playFavoriteSound = item.is_favorite
+      ? undefined
+      : prepareFavoriteSound()
+    try {
+      const updated = item.is_favorite
+        ? await removeFromFavorites(item.id)
+        : await addToFavorites(item.id)
+      if (!item.is_favorite) {
+        celebrateFavoriteAdded()
+        playFavoriteSound?.()
+      }
+      setMedia((current) =>
+        current.map((mediaItem) =>
+          mediaItem.id === updated.id ? updated : mediaItem,
+        ),
+      )
+    } catch (err) {
+      console.error('Unable to update media favorite state.', err)
+      window.alert('Unable to update favorite.')
+    }
+  }
 
   return (
     <div className="photos-page fade-in">
@@ -113,26 +154,16 @@ export function Videos({
       <section className="photos-header">
         <div>
           <span className="dashboard-eyebrow">
-            BIBLIOTHÈQUE
+            {t('BIBLIOTHÈQUE', 'LIBRARY')}
           </span>
 
           <h1>Vidéos</h1>
 
           <p className="text-secondary">
-            Toutes tes vidéos dans un seul espace.
+            {t('Toutes tes vidéos au même endroit.', 'Your videos, all in one place.')}
           </p>
         </div>
 
-        {onUpload && (
-          <button
-            type="button"
-            className="accent-button"
-            onClick={onUpload}
-          >
-            <span>＋</span>
-            <span>Importer</span>
-          </button>
-        )}
       </section>
 
       <section className="photos-toolbar glass">
@@ -149,7 +180,7 @@ export function Videos({
               setFilter('all')
             }
           >
-            Toutes
+            {t('Toutes', 'All')}
           </button>
 
           <button
@@ -163,7 +194,7 @@ export function Videos({
               setFilter('recent')
             }
           >
-            Récentes
+            {t('Récentes', 'Recent')}
           </button>
 
           <button
@@ -177,7 +208,7 @@ export function Videos({
               setFilter('favorites')
             }
           >
-            ♡ Favoris
+            ♡ {t('Favoris', 'Favorites')}
           </button>
 
         </div>
@@ -186,8 +217,8 @@ export function Videos({
           <span>{videoCount}</span>
           <span>
             {videoCount === 1
-              ? 'vidéo'
-              : 'vidéos'}
+              ? t('vidéo', 'video')
+              : t('vidéos', 'videos')}
           </span>
         </div>
       </section>
@@ -198,10 +229,10 @@ export function Videos({
             ◌
           </div>
 
-          <h3>Chargement des vidéos...</h3>
+          <h3>{t('Chargement des vidéos…', 'Loading videos…')}</h3>
 
           <p className="text-secondary">
-            Récupération de ta bibliothèque.
+            {t('Chargement de ta galerie.', 'Loading your library.')}
           </p>
         </div>
       )}
@@ -212,7 +243,7 @@ export function Videos({
             !
           </div>
 
-          <h3>Impossible de charger les vidéos</h3>
+          <h3>{t('Impossible de charger les vidéos', 'Unable to load videos')}</h3>
 
           <p className="text-secondary">
             {error}
@@ -224,6 +255,7 @@ export function Videos({
         <MediaGrid
           media={filteredMedia}
           onMediaClick={onMediaClick}
+          onFavorite={handleFavorite}
         />
       )}
 

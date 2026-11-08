@@ -2,6 +2,7 @@ import type {
   Group,
   GroupDetail,
   GroupMember,
+  GroupRole,
 } from '../types/group'
 
 import { apiFetch } from './api'
@@ -73,6 +74,7 @@ export async function getGroupMembers(
 export async function addGroupMember(
   groupId: number,
   userId: number,
+  role: Exclude<GroupRole, 'owner'> = 'viewer',
 ): Promise<GroupMember> {
   return apiFetch<GroupMember>(
     `/groups/${groupId}/members`,
@@ -80,7 +82,22 @@ export async function addGroupMember(
       method: 'POST',
       body: JSON.stringify({
         user_id: userId,
+        role,
       }),
+    },
+  )
+}
+
+export async function updateGroupMemberRole(
+  groupId: number,
+  userId: number,
+  role: Exclude<GroupRole, 'owner'>,
+): Promise<GroupMember> {
+  return apiFetch<GroupMember>(
+    `/groups/${groupId}/members/${userId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
     },
   )
 }

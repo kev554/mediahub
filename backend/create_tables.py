@@ -2,7 +2,7 @@ from app.db.database import Base, engine
 
 # Important :
 # l'import force SQLAlchemy à connaître tous les modèles.
-from app.models import User, Media, Album, Group
+from app.models import User, Media, Album, Group, MediaShare
 
 
 print("Création des tables MediaHub...")
