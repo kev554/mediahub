@@ -52,6 +52,10 @@ export function useAuthenticatedMedia(
             setLoading(false)
             return
           }
+          if (!stream) {
+            setLoading(false)
+            return
+          }
         } else if (!navigator.onLine) {
           throw new Error('Ce média n’est pas encore disponible hors ligne.')
         }
