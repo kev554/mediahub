@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import type { Media } from '../../types/media'
 import { useAuthenticatedMedia } from '../../hooks/useAuthenticatedMedia'
 import { Heart, Play, Search } from 'lucide-react'
@@ -33,13 +34,35 @@ export function MediaCard({
   selected = false,
   onSelect,
 }: MediaCardProps) {
+  const cardRef = useRef<HTMLElement>(null)
+  const [nearViewport, setNearViewport] = useState(
+    () => typeof IntersectionObserver === 'undefined',
+  )
 
   const {
     url: thumbnailUrl,
     loading: thumbnailLoading,
   } = useAuthenticatedMedia(
-    media.thumbnail_url,
+    nearViewport ? media.thumbnail_url : null,
   )
+
+  useEffect(() => {
+    const card = cardRef.current
+    if (!card || nearViewport) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setNearViewport(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '300px' },
+    )
+    observer.observe(card)
+
+    return () => observer.disconnect()
+  }, [nearViewport])
 
   const isVideo =
     media.media_type === 'video'
@@ -76,6 +99,7 @@ export function MediaCard({
 
   return (
     <article
+      ref={cardRef}
       className={`media-card glass ${
         selected
           ? 'media-card-selected selected'

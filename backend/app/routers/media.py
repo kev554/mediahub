@@ -1041,6 +1041,16 @@ def list_media(
     # CONSTRUCTION
     # --------------------------------------------------------
 
+    media_ids = [media.id for media in media_items]
+    favorite_media_ids = set(
+        db.scalars(
+            select(MediaFavorite.media_id).where(
+                MediaFavorite.user_id == current_user.id,
+                MediaFavorite.media_id.in_(media_ids),
+            )
+        ).all()
+    ) if media_ids else set()
+
     items = []
 
     for media in media_items:
@@ -1048,18 +1058,7 @@ def list_media(
             media
         )
 
-        favorite_exists = db.scalar(
-            select(MediaFavorite).where(
-                MediaFavorite.user_id
-                == current_user.id,
-                MediaFavorite.media_id
-                == media.id,
-            )
-        )
-
-        item.is_favorite = (
-            favorite_exists is not None
-        )
+        item.is_favorite = media.id in favorite_media_ids
 
         item.thumbnail_url = (
             f"/api/media/{media.id}/thumbnail"
